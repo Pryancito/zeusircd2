@@ -2219,6 +2219,18 @@ mod test {
                 ]
             ));
             assert_eq!(
+                format!(
+                    ":irc.irc 317 fanny harry {} {} :seconds idle, signon time",
+                    SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_secs()
+                        - signon,
+                    signon
+                ),
+                line_stream.next().await.unwrap().unwrap()
+            );
+            assert_eq!(
                 ":irc.irc 318 fanny harry :End of /WHOIS list".to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
