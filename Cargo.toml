@@ -1,12 +1,12 @@
 [package]
-name = "simple-irc-server"
-authors = ["Mateusz Szpakowski"]
+name = "zeusircd2"
+authors = ["Moebius ( Pryan )"]
 license = "LGPL-2.1-or-later"
-version = "0.1.8"
-edition = "2018"
+version = "1.0"
+edition = "2025"
 rust-version = "1.57"
-description = "Simple IRC server"
-repository = "https://github.com/matszpk/simple-irc-server"
+description = "Next generation ircd"
+repository = "https://github.com/Pryancito/zeusircd2"
 categories = ["network-programming"]
 keywords = ["irc"]
 
