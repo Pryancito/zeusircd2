@@ -2,8 +2,8 @@
 name = "zeusircd2"
 authors = ["Moebius ( Pryan )"]
 license = "LGPL-2.1-or-later"
-version = "1.0"
-edition = "2025"
+version = "0.0.1"
+edition = "2018"
 rust-version = "1.57"
 description = "Next generation ircd"
 repository = "https://github.com/Pryancito/zeusircd2"
