@@ -2246,12 +2246,12 @@ mod test {
         assert_eq!(
             Ok(MODE {
                 target: "andy",
-                modes: vec![("+ow", vec![])]
+                modes: vec![("+owWz", vec![])]
             }),
             Command::from_message(&Message {
                 source: None,
                 command: "MODE",
-                params: vec!["andy", "+ow"]
+                params: vec!["andy", "+owWz"]
             })
             .map_err(|e| e.to_string())
         );

@@ -13,7 +13,7 @@ listen = "127.0.0.1"
 port = 6667
 # Optional password required to login to your IRC server. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-password = "kABc9xjQBSwgV2WfM02/AV8rQhEpTzRjn+fYC1x3ab0hRul9S9EkxGS/GMckLQjn0gYEEX3ISmXDfetwTUwhpQ"
+password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
 # Name of IRC network.
 network = "IRCInetwork"
 # Maximal number of acceptable connections.
@@ -27,7 +27,7 @@ pong_timeout = 30
 # MOTD - Message of the Day.
 motd = "Hello, guys!"
 # DNS Lookup. If true then server try to get domain name of the client from DNS.
-dns_lookup = true
+dns_lookup = false
 # Minimal log level. Log Levels from lowest:
 # TRACE, DEBUG, INFO, WARN, ERROR.
 log_level = "INFO"
@@ -35,11 +35,11 @@ log_level = "INFO"
 log_file = "irc.log"
 
 # Optional. Set secure TLS connection.
-[tls]
+#[tls]
 # Certificate file.
-cert_file = "cert.crt"
+#cert_file = "cert.crt"
 # Certificate key file.
-cert_key_file = "cert_key.crt"
+#cert_key_file = "cert_key.crt"
 
 # Default user's mode that will be given after log in.
 [default_user_modes]
@@ -72,20 +72,20 @@ mask = "*!*@localhost"
 # Optional. List of registered users.
 [[users]]
 # Name of user.
-name = "matszpk"
+name = "Moebius"
 # Nick of user.
-nick = "matszpk"
+nick = "Moebius"
 # Required password to authenticate an user. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-password = "xVfVq4pvFosvOQb0IVaPMkK22u0ZF2Ki7XB9yRsGbnEbL6WXhQCdpOwDV62HZ0MS5RjqmfrQJT7lV3aohUa3uw"
+password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
 # Optional. Source mask of source that will be checked for user source.
 # Source is combination of the nick, name and host.
-mask = "*!*@localhost"
+mask = "*!*@127.0.0.1"
 
 # Optional. List of preconfigured channels.
 [[channels]]
 # Name of channel.
-name = "#maintopic"
+name = "#Devel"
 # Optional. Topic of channel.
 topic = "Some topic"
 

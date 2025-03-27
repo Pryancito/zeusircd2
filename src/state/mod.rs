@@ -852,7 +852,6 @@ mod test {
         cert_store.add(&certs.remove(0)).unwrap();
         let config = Arc::new(
             rustls::ClientConfig::builder()
-                .with_safe_defaults()
                 .with_root_certificates(cert_store)
                 .with_no_client_auth(),
         );
@@ -1065,7 +1064,7 @@ mod test {
                     env!("CARGO_PKG_NAME"),
                     "-",
                     env!("CARGO_PKG_VERSION"),
-                    " Oiorw Iabehiklmnopqstv"
+                    " OiorwWz Iabehiklmnopqstv"
                 ),
                 line_stream.next().await.unwrap().unwrap()
             );

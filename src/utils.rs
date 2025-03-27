@@ -278,7 +278,7 @@ pub(crate) fn validate_usermodes<'a>(
         if !ms.is_empty() {
             if ms
                 .find(|c| {
-                    c != '+' && c != '-' && c != 'i' && c != 'o' && c != 'O' && c != 'r' && c != 'w'
+                    c != '+' && c != '-' && c != 'i' && c != 'o' && c != 'O' && c != 'r' && c != 'w' && c != 'W' && c != 'z'
                 })
                 .is_some()
             {
