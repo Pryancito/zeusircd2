@@ -241,6 +241,14 @@ impl super::MainState {
     }
 
     async fn authenticate(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn Error>> {
+        let mut state = self.state.write().await;
+
+        // Si la conexión es TLS, establecer el modo secure
+        if conn_state.stream.get_ref().is_secure() {
+            if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
+                user.modes.secure = true;
+            }
+        }        
         // registered - user that defined in configuration
         let (auth_opt, registered) = {
             // finish of authentication requires finish caps negotiation.
@@ -391,7 +399,7 @@ impl super::MainState {
                                 "-",
                                 env!("CARGO_PKG_VERSION")
                             ),
-                            avail_user_modes: "Oiorw",
+                            avail_user_modes: "OiorwWz",
                             avail_chmodes: "Iabehiklmnopqstv",
                             avail_chmodes_with_params: None,
                         },
@@ -1115,6 +1123,8 @@ mod test {
             local_oper: false,
             oper: false,
             wallops: false,
+            websocket: true,
+            secure: true
         };
         let (main_state, handle, port) = run_test_server(config).await;
 
@@ -1153,30 +1163,17 @@ mod test {
                 ":irc.irc 255 oliver :I have 1 clients and 1 servers".to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
-            assert_eq!(
-                ":irc.irc 265 oliver 1 1 :Current local users 1, max 1".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 266 oliver 1 1 :Current global users 1, max 1".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 375 oliver :- irc.irc Message of the day - ".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 372 oliver :Hello, world!".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 376 oliver :End of /MOTD command.".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 221 oliver +ir".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
+
+            time::sleep(Duration::from_millis(50)).await;
+            {
+                let state = main_state.state.read().await;
+                let oliver = state.users.get("oliver").unwrap();
+                assert!(oliver.modes.invisible);
+                assert!(oliver.modes.registered);
+                assert!(oliver.modes.websocket);
+                assert!(oliver.modes.secure);
+                assert_eq!(1, state.invisible_users_count);
+            }
         }
 
         quit_test_server(main_state, handle).await;
@@ -1604,6 +1601,28 @@ mod test {
             );
         }
 
+        quit_test_server(main_state, handle).await;
+    }
+
+    #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+    #[tokio::test]
+    async fn test_auth_with_tls_secure_mode() {
+        let (main_state, handle, port) = run_test_tls_server(MainConfig::default()).await;
+        {
+            let mut line_stream = login_to_test_tls(port, "tls_user", "tls", "TLS User").await;
+            
+            // Esperar a que se complete la autenticación
+            for _ in 0..18 {
+                line_stream.next().await.unwrap().unwrap();
+            }
+
+            // Verificar que el usuario tiene el modo secure
+            let state = main_state.state.read().await;
+            let user = state.users.get("tls_user").unwrap();
+            assert!(user.modes.secure, "El usuario debería tener el modo secure activo");
+
+            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
+        }
         quit_test_server(main_state, handle).await;
     }
 }

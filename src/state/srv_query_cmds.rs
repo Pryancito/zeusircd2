@@ -1066,6 +1066,32 @@ impl super::MainState {
                                 unset_modes_string.push('w');
                             }
                         }
+                        'W' => {
+                            if mode_set {
+                                if !user.modes.websocket {
+                                    user.modes.websocket = true;
+                                    // put to applied modes
+                                    set_modes_string.push('W');
+                                }
+                            } else if user.modes.websocket {
+                                user.modes.websocket = false;
+                                // put to applied modes
+                                unset_modes_string.push('W');
+                            }
+                        }
+                        'z' => {
+                            if mode_set {
+                                if !user.modes.secure {
+                                    user.modes.secure = true;
+                                    // put to applied modes
+                                    set_modes_string.push('z');
+                                }
+                            } else if user.modes.secure {
+                                user.modes.secure = false;
+                                // put to applied modes
+                                unset_modes_string.push('z');
+                            }
+                        }
                         'o' => {
                             if mode_set {
                                 if !user.modes.oper {
@@ -1912,6 +1938,41 @@ mod test {
                 assert!(roland.modes.registered);
                 assert!(!state.wallops_users.contains("roland"));
                 assert_eq!(0, state.invisible_users_count);
+            }
+
+            // Probar modos websocket y secure
+            line_stream
+                .send("MODE roland +Wz".to_string())
+                .await
+                .unwrap();
+            assert_eq!(
+                ":roland!~roland@127.0.0.1 MODE roland +Wz".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
+
+            time::sleep(Duration::from_millis(50)).await;
+            {
+                let state = main_state.state.read().await;
+                let roland = state.users.get("roland").unwrap();
+                assert!(roland.modes.websocket);
+                assert!(roland.modes.secure);
+            }
+
+            line_stream
+                .send("MODE roland -Wz".to_string())
+                .await
+                .unwrap();
+            assert_eq!(
+                ":roland!~roland@127.0.0.1 MODE roland -Wz".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
+
+            time::sleep(Duration::from_millis(50)).await;
+            {
+                let state = main_state.state.read().await;
+                let roland = state.users.get("roland").unwrap();
+                assert!(!roland.modes.websocket);
+                assert!(!roland.modes.secure);
             }
         }
 

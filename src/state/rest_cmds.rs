@@ -535,6 +535,17 @@ impl super::MainState {
                     )
                     .await?;
                 }
+                // Si el usuario tiene el modo websocket activo, mostrarlo
+                if arg_user.modes.websocket {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplWhoIsWebsocket672 {
+                            client,
+                            nick: &nick,
+                        },
+                    )
+                    .await?;
+                }
             }
             self.feed_msg(
                 &mut conn_state.stream,
@@ -3003,6 +3014,51 @@ mod test {
                     .to_string(),
                 keith_stream.next().await.unwrap().unwrap()
             );
+        }
+
+        quit_test_server(main_state, handle).await;
+    }
+
+    #[tokio::test]
+    async fn test_command_whois_websocket() {
+        let mut config = MainConfig::default();
+        config.default_user_modes = UserModes {
+            invisible: false,
+            oper: false,
+            local_oper: false,
+            registered: true,
+            wallops: false,
+            websocket: true,
+            secure: false
+        };
+        let (main_state, handle, port) = run_test_server(config).await;
+
+        {
+            let mut line_stream = login_to_test_and_skip(port, "fanny", "fanny", "Fanny BumBumBum").await;
+            let mut websocket_stream = login_to_test_and_skip(port, "websocket", "websocket", "WebSocket User").await;
+
+            time::sleep(Duration::from_millis(50)).await;
+
+            line_stream.send("WHOIS websocket".to_string()).await.unwrap();
+            
+            // Verificar que se muestra la información básica
+            assert_eq!(
+                ":irc.irc 311 fanny websocket ~websocket 127.0.0.1 * :WebSocket User".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
+            assert_eq!(
+                ":irc.irc 312 fanny websocket irc.irc :This is IRC server".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
+            
+            // Verificar que se muestra el modo websocket
+            assert_eq!(
+                ":irc.irc 672 fanny websocket :is using a websocket connection".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
+
+            websocket_stream.send("QUIT :Bye".to_string()).await.unwrap();
+            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
         }
 
         quit_test_server(main_state, handle).await;

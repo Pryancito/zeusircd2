@@ -838,6 +838,14 @@ wallops = false
 websocket = false
 secure = false
 
+[tls]
+cert_file = "cert.crt"
+cert_key_file = "cert_key.crt"
+
+[[operators]]
+name = "matiszpaki"
+password = "u1hG814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
+
 [[channels]]
 name = "#channel1"
 topic = "Some topic"
@@ -1059,6 +1067,83 @@ cert_file = "cert.crt"
 cert_key_file = "cert_key.crt"
 
 [[operators]]
+name = "matiszpaki"
+password = "u1hG814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
+
+[[channels]]
+name = "#channel1"
+topic = "Some topic"
+[channels.modes]
+ban = [ 'baddi@*', 'baddi2@*' ]
+exception = [ 'bobby@*', 'mati@*' ]
+moderated = false
+invite_only = false
+secret = false
+protected_topic = false
+no_external_messages = false
+
+[[users]]
+name = "lucas"
+nick = "luckboy"
+password = "DGEKj3C60CRBF+eQQF9HCmt26ofniR373G54P9D2FsxzSXzq639lUsgEeQRlMtutYUf/nWnYSOKWIVyeMtK+ug"
+
+[[channels]]
+name = "#channel2"
+topic = "Some topic 2"
+[channels.modes]
+key = "hokus pokus"
+ban = []
+exception = []
+invite_exception = [ "nomi@buru.com", "pampam@zerox.net" ]
+moderated = true
+invite_only = true
+client_limit = 200
+secret = false
+protected_topic = true
+no_external_messages = false
+"##,
+        )
+        .unwrap();
+        let result = MainConfig::new(cli.clone()).map_err(|e| e.to_string());
+        assert_eq!(
+            Err("operators[0].name: Validation error: Username must not \
+contains '.', ',' or ':'. [{\"value\": String(\"matiszpaki\")}]"
+                .to_string()),
+            result
+        );
+
+        fs::write(
+            file_handle.path.as_str(),
+            r##"
+name = "irci.localhost"
+admin_info = "IRCI is local IRC server"
+admin_info2 = "IRCI is good server"
+info = "This is IRCI server"
+listen = "127.0.0.1"
+port = 6667
+motd = "Hello, guys!"
+network = "IRCInetwork"
+max_connections = 4000
+max_joins = 10
+ping_timeout = 100
+pong_timeout = 30
+dns_lookup = false
+log_level = "INFO"
+
+[default_user_modes]
+invisible = false
+oper = false
+local_oper = false
+registered = true
+wallops = false
+websocket = false
+secure = false
+
+[tls]
+cert_file = "cert.crt"
+cert_key_file = "cert_key.crt"
+
+[[operators]]
 name = "matis.zpaki"
 password = "u1hG814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
 
@@ -1231,167 +1316,7 @@ no_external_messages = false
 [[users]]
 name = "lucas"
 nick = "luckboy"
-password = "DGEKj3C60CRBF+eQQF9HCmt26ofniR373G54P9D2FsxzSXzq639lUsgEeQRlMtutYUf/nWnYSOKWIVyeMtK+ug"
-
-[[channels]]
-name = "^channel2"
-topic = "Some topic 2"
-[channels.modes]
-key = "hokus pokus"
-ban = []
-exception = []
-invite_exception = [ "nomi@buru.com", "pampam@zerox.net" ]
-moderated = true
-invite_only = true
-client_limit = 200
-secret = false
-protected_topic = true
-no_external_messages = false
-"##,
-        )
-        .unwrap();
-        let result = MainConfig::new(cli.clone()).map_err(|e| e.to_string());
-        assert_eq!(
-            Err(
-                "channels[1].name: Validation error: Channel name must have '#' or \
-'&' at start and must not contains ',' or ':'. [{\"value\": String(\"^channel2\")}]"
-                    .to_string()
-            ),
-            result
-        );
-
-        fs::write(
-            file_handle.path.as_str(),
-            r##"
-name = "irci.localhost"
-admin_info = "IRCI is local IRC server"
-admin_info2 = "IRCI is good server"
-info = "This is IRCI server"
-listen = "127.0.0.1"
-port = 6667
-motd = "Hello, guys!"
-network = "IRCInetwork"
-max_connections = 4000
-max_joins = 10
-ping_timeout = 100
-pong_timeout = 30
-dns_lookup = false
-log_level = "INFO"
-
-[default_user_modes]
-invisible = false
-oper = false
-local_oper = false
-registered = true
-wallops = false
-websocket = false
-secure = false
-
-[tls]
-cert_file = "cert.crt"
-cert_key_file = "cert_key.crt"
-
-[[operators]]
-name = "matiszpaki"
-password = "u1hG814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
-
-[[channels]]
-name = "#channel1"
-topic = "Some topic"
-[channels.modes]
-ban = [ 'baddi@*', 'baddi2@*' ]
-exception = [ 'bobby@*', 'mati@*' ]
-moderated = false
-invite_only = false
-secret = false
-protected_topic = false
-no_external_messages = false
-
-[[users]]
-name = "lucas"
-nick = "luckboy"
-password = "DGEKj3C60CRBF+eQQF9HCmt26ofniR373G54P9D2FsxzSXzq639lUsgEeQRlMtutYUf/nWnYSOKWIVyeMtK+ug"
-
-[[channels]]
-name = "#cha:nnel2"
-topic = "Some topic 2"
-[channels.modes]
-key = "hokus pokus"
-ban = []
-exception = []
-invite_exception = [ "nomi@buru.com", "pampam@zerox.net" ]
-moderated = true
-invite_only = true
-client_limit = 200
-secret = false
-protected_topic = true
-no_external_messages = false
-"##,
-        )
-        .unwrap();
-        let result = MainConfig::new(cli.clone()).map_err(|e| e.to_string());
-        assert_eq!(
-            Err(
-                "channels[1].name: Validation error: Channel name must have '#' or \
-'&' at start and must not contains ',' or ':'. \
-[{\"value\": String(\"#cha:nnel2\")}]"
-                    .to_string()
-            ),
-            result
-        );
-
-        fs::write(
-            file_handle.path.as_str(),
-            r##"
-name = "irci.localhost"
-admin_info = "IRCI is local IRC server"
-admin_info2 = "IRCI is good server"
-info = "This is IRCI server"
-listen = "127.0.0.1"
-port = 6667
-password = "814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
-motd = "Hello, guys!"
-network = "IRCInetwork"
-max_connections = 4000
-max_joins = 10
-ping_timeout = 100
-pong_timeout = 30
-dns_lookup = false
-log_level = "INFO"
-
-[default_user_modes]
-invisible = false
-oper = false
-local_oper = false
-registered = true
-wallops = false
-websocket = false
-secure = false
-
-[tls]
-cert_file = "cert.crt"
-cert_key_file = "cert_key.crt"
-
-[[operators]]
-name = "matiszpaki"
-password = "u1hG814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag"
-
-[[channels]]
-name = "#channel1"
-topic = "Some topic"
-[channels.modes]
-ban = [ 'baddi@*', 'baddi2@*' ]
-exception = [ 'bobby@*', 'mati@*' ]
-moderated = false
-invite_only = false
-secret = false
-protected_topic = false
-no_external_messages = false
-
-[[users]]
-name = "lucas"
-nick = "luckboy"
-password = "DGEKj3C60CRBF+eQQF9HCmt26ofniR373G54P9D2FsxzSXzq639lUsgEeQRlMtutYUf/nWnYSOKWIVyeMtK+ug"
+password = "xxxxxxxx"
 
 [[channels]]
 name = "#channel2"
@@ -1412,10 +1337,11 @@ no_external_messages = false
         .unwrap();
         let result = MainConfig::new(cli.clone()).map_err(|e| e.to_string());
         assert_eq!(
-            Err("password: Validation error: Wrong password hash length \
-        [{\"value\": String(\"814j88zYGsEZoKba2op9ems63On/QsqWWTFvEkUWaZFkzcr\
-        4Bri/sUIG5+u01qbfQ+GWF+PMXNFIPCJdag\")}]"
-                .to_string()),
+            Err(
+                "users[0].password: Validation error: Wrong base64 password hash \
+                [{\"value\": String(\"xxxxxxxx\")}]"
+                    .to_string()
+            ),
             result
         );
 
@@ -1428,7 +1354,7 @@ admin_info2 = "IRCI is good server"
 info = "This is IRCI server"
 listen = "127.0.0.1"
 port = 6667
-password = "xxxxxxxxxx"
+password = "VgWezXctjWvsY6V7gzSQPnluUuAwq06m5IxwcIg3OfBIMM+zWCJntk8HEZDgh4ctFei3bqt1r0O1VIyOV7dL+w"
 motd = "Hello, guys!"
 network = "IRCInetwork"
 max_connections = 4000
@@ -1586,7 +1512,6 @@ admin_info2 = "IRCI is good server"
 info = "This is IRCI server"
 listen = "127.0.0.1"
 port = 6667
-password = "VgWezXctjWvsY6V7gzSQPnluUuAwq06m5IxwcIg3OfBIMM+zWCJntk8HEZDgh4ctFei3bqt1r0O1VIyOV7dL+w"
 motd = "Hello, guys!"
 network = "IRCInetwork"
 max_connections = 4000
@@ -1699,6 +1624,19 @@ no_external_messages = false
             }
             .to_string()
         );
+        assert_eq!(
+            "+irWz".to_string(),
+            UserModes {
+                invisible: true,
+                oper: false,
+                local_oper: false,
+                registered: true,
+                wallops: false,
+                websocket: true,
+                secure: true
+            }
+            .to_string()
+        );
     }
 
     #[test]
@@ -1754,8 +1692,6 @@ no_external_messages = false
             key: None,
             operators: None,
             half_operators: None,
-            founders: None,
-            protecteds: None,
             voices: Some(["guy1".to_string(), "guy2".to_string()].into()),
             invite_only: true,
             moderated: true,

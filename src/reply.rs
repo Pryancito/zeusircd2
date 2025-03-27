@@ -466,6 +466,10 @@ pub(crate) enum Reply<'a> {
         client: &'a str,
         nick: &'a str,
     },
+    RplWhoIsWebsocket672 {
+        client: &'a str,
+        nick: &'a str,
+    },
     //ErrStartTls691{ client: &'a str },
     ErrInvalidModeParam696 {
         client: &'a str,
@@ -1125,6 +1129,9 @@ impl<'a> fmt::Display for Reply<'a> {
             //    write!(f, "670 {} :STARTTLS successful, proceed with TLS handshake", client) }
             RplWhoIsSecure671 { client, nick } => {
                 write!(f, "671 {} {} :is using a secure connection", client, nick)
+            }
+            RplWhoIsWebsocket672 { client, nick } => {
+                write!(f, "672 {} {} :is using a websocket connection", client, nick)
             }
             //ErrStartTls691{ client } => {
             //    write!(f, "691 {} :STARTTLS failed (Wrong moon phase)", client) }
@@ -2174,10 +2181,26 @@ mod test {
         );
         //assert_eq!("670 <client> :STARTTLS successful, proceed with TLS handshake",
         //    format!("{}", RplStartTls670{ client: "<client>" }));
-        //assert_eq!("671 <client> <nick> :is using a secure connection",
-        //    format!("{}", RplWhoIsSecure671{ client: "<client>", nick: "<nick>" }));
-        //assert_eq!("691 <client> :STARTTLS failed (Wrong moon phase)",
-        //    format!("{}", ErrStartTls691{ client: "<client>" }));
+        assert_eq!(
+            "671 <client> <nick> :is using a secure connection",
+            format!(
+                "{}",
+                RplWhoIsSecure671 {
+                    client: "<client>",
+                    nick: "<nick>"
+                }
+            )
+        );
+        assert_eq!(
+            "672 <client> <nick> :is using a websocket connection",
+            format!(
+                "{}",
+                RplWhoIsWebsocket672 {
+                    client: "<client>",
+                    nick: "<nick>"
+                }
+            )
+        );
         assert_eq!(
             "696 <client> <target chan/user> x <parameter> :<description>",
             format!(

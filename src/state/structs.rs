@@ -820,6 +820,8 @@ mod test {
             local_oper: false,
             registered: true,
             wallops: false,
+            websocket: false,
+            secure: false
         };
         let user_state = ConnUserState {
             ip_addr: "127.0.0.1".parse().unwrap(),
