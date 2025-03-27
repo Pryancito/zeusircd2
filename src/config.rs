@@ -75,15 +75,15 @@ pub(crate) struct OperatorConfig {
     pub(crate) mask: Option<String>,
 }
 
-#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Debug, Default)]
+#[derive(Copy, Clone, PartialEq, Eq, Deserialize, Debug, Default, Validate)]
 pub(crate) struct UserModes {
     pub(crate) invisible: bool,
     pub(crate) oper: bool,
     pub(crate) local_oper: bool,
     pub(crate) registered: bool,
     pub(crate) wallops: bool,
-    pub(crate) secure: bool,
     pub(crate) websocket: bool,
+    pub(crate) secure: bool,
 }
 
 impl fmt::Display for UserModes {
@@ -599,7 +599,7 @@ no_external_messages = false
                     registered: true,
                     wallops: false,
                     websocket: false,
-                    secure: false,
+                    secure: false
                 },
                 operators: Some(vec![OperatorConfig {
                     name: "matiszpaki".to_string(),
@@ -718,7 +718,7 @@ no_external_messages = false
                     registered: true,
                     wallops: false,
                     websocket: false,
-                    secure: false,
+                    secure: false
                 },
                 operators: Some(vec![OperatorConfig {
                     name: "matiszpaki".to_string(),
@@ -898,7 +898,7 @@ no_external_messages = false
                     registered: true,
                     wallops: false,
                     websocket: false,
-                    secure: false,
+                    secure: false
                 },
                 operators: None,
                 users: None,
@@ -1432,7 +1432,6 @@ admin_info2 = "IRCI is good server"
 info = "This is IRCI server"
 listen = "127.0.0.1"
 port = 6667
-password = "VgWezXctjWvsY6V7gzSQPnluUuAwq06m5IxwcIg3OfBIMM+zWCJntk8HEZDgh4ctFei3bqt1r0O1VIyOV7dL+w"
 motd = "Hello, guys!"
 network = "IRCInetwork"
 max_connections = 4000
