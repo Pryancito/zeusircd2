@@ -471,6 +471,10 @@ async fn user_state_process_tls(
 ) {
     match acceptor.accept(stream).await {
         Ok(tls_stream) => {
+            let mut state = self.state.write();
+            if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
+                user.modes.secure = true;
+            }
             user_state_process(
                 main_state,
                 DualTcpStream::SecureStream(Box::new(tls_stream)),
@@ -1084,7 +1088,7 @@ mod test {
             );
             assert_eq!(
                 ":irc.irc 005 mati SAFELIST STATUSMSG=~&@%+ TOPICLEN=1000 USERLEN=200 \
-                    USERMODES=Oiorw :are supported by this server"
+                    USERMODES=OiorwWz :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
@@ -1230,7 +1234,7 @@ mod test {
             );
             assert_eq!(
                 ":irc.irc 005 mati SAFELIST STATUSMSG=~&@%+ TOPICLEN=1000 USERLEN=200 \
-                    USERMODES=Oiorw :are supported by this server"
+                    USERMODES=OiorwWz :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );

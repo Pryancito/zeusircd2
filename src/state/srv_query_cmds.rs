@@ -1307,7 +1307,7 @@ mod test {
             );
             assert_eq!(
                 ":irc.irc 005 tommy SAFELIST STATUSMSG=~&@%+ TOPICLEN=1000 USERLEN=200 \
-                    USERMODES=Oiorw :are supported by this server"
+                    USERMODES=OiorwWz :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );

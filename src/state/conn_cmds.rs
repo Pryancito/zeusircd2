@@ -241,13 +241,6 @@ impl super::MainState {
     }
 
     async fn authenticate(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn Error>> {
-        // Si la conexión es TLS, establecer el modo secure
-        if conn_state.stream.get_ref().is_secure() {
-            let mut state = self.state.write().await;
-            if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
-                user.modes.secure = true;
-            }
-        }        
         // registered - user that defined in configuration
         let (auth_opt, registered) = {
             // finish of authentication requires finish caps negotiation.
