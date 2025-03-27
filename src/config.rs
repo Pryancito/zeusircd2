@@ -82,6 +82,8 @@ pub(crate) struct UserModes {
     pub(crate) local_oper: bool,
     pub(crate) registered: bool,
     pub(crate) wallops: bool,
+    pub(crate) secure: bool,
+    pub(crate) websocket: bool,
 }
 
 impl fmt::Display for UserModes {
