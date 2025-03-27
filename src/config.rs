@@ -104,6 +104,12 @@ impl fmt::Display for UserModes {
         if self.wallops {
             s.push('w');
         }
+        if self.websocket {
+            s.push('W');
+        }
+        if self.secure {
+            s.push('z');
+        }
         f.write_str(&s)
     }
 }
@@ -512,6 +518,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -590,6 +598,8 @@ no_external_messages = false
                     local_oper: false,
                     registered: true,
                     wallops: false,
+                    websocket: false,
+                    secure: false,
                 },
                 operators: Some(vec![OperatorConfig {
                     name: "matiszpaki".to_string(),
@@ -707,6 +717,8 @@ no_external_messages = false
                     local_oper: false,
                     registered: true,
                     wallops: false,
+                    websocket: false,
+                    secure: false,
                 },
                 operators: Some(vec![OperatorConfig {
                     name: "matiszpaki".to_string(),
@@ -823,6 +835,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [[channels]]
 name = "#channel1"
@@ -875,6 +889,8 @@ no_external_messages = false
                     local_oper: false,
                     registered: true,
                     wallops: false,
+                    websocket: false,
+                    secure: false,
                 },
                 operators: None,
                 users: None,
@@ -951,6 +967,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1033,6 +1051,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1108,6 +1128,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1183,6 +1205,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1260,6 +1284,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1339,6 +1365,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1416,6 +1444,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1492,6 +1522,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1570,6 +1602,8 @@ oper = false
 local_oper = false
 registered = true
 wallops = false
+websocket = false
+secure = false
 
 [tls]
 cert_file = "cert.crt"
@@ -1633,7 +1667,9 @@ no_external_messages = false
                 oper: true,
                 local_oper: true,
                 registered: true,
-                wallops: false
+                wallops: false,
+                websocket: false,
+                secure: false
             }
             .to_string()
         );
@@ -1644,7 +1680,22 @@ no_external_messages = false
                 oper: false,
                 local_oper: false,
                 registered: true,
-                wallops: true
+                wallops: true,
+                websocket: false,
+                secure: false
+            }
+            .to_string()
+        );
+        assert_eq!(
+            "+Wz".to_string(),
+            UserModes {
+                invisible: false,
+                oper: false,
+                local_oper: false,
+                registered: false,
+                wallops: false,
+                websocket: true,
+                secure: true
             }
             .to_string()
         );
