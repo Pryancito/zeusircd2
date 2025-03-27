@@ -53,6 +53,10 @@ local_oper = false
 registered = true
 # Wallops mode.
 wallops = false
+# Websocket mode.
+websocket = false
+# Secure connection mode.
+secure = false
 
 # Optional. List of operators
 [[operators]]
