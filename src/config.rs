@@ -1690,6 +1690,8 @@ no_external_messages = false
             invite_exception: Some(["somebody".to_string()].into()),
             client_limit: None,
             key: None,
+            founders: None,
+            protecteds: None,
             operators: None,
             half_operators: None,
             voices: Some(["guy1".to_string(), "guy2".to_string()].into()),
