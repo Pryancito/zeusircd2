@@ -1067,30 +1067,18 @@ impl super::MainState {
                             }
                         }
                         'W' => {
-                            if mode_set {
-                                if !user.modes.websocket {
-                                    user.modes.websocket = true;
-                                    // put to applied modes
-                                    set_modes_string.push('W');
-                                }
-                            } else if user.modes.websocket {
-                                user.modes.websocket = false;
-                                // put to applied modes
-                                unset_modes_string.push('W');
-                            }
+                            self.feed_msg(
+                                &mut conn_state.stream,
+                                ErrNoPrivileges481 { client },
+                            )
+                            .await?;
                         }
                         'z' => {
-                            if mode_set {
-                                if !user.modes.secure {
-                                    user.modes.secure = true;
-                                    // put to applied modes
-                                    set_modes_string.push('z');
-                                }
-                            } else if user.modes.secure {
-                                user.modes.secure = false;
-                                // put to applied modes
-                                unset_modes_string.push('z');
-                            }
+                            self.feed_msg(
+                                &mut conn_state.stream,
+                                ErrNoPrivileges481 { client },
+                            )
+                            .await?;
                         }
                         'o' => {
                             if mode_set {
@@ -1307,7 +1295,7 @@ mod test {
             );
             assert_eq!(
                 ":irc.irc 005 tommy SAFELIST STATUSMSG=~&@%+ TOPICLEN=1000 USERLEN=200 \
-                    USERMODES=OiorwWz :are supported by this server"
+                    USERMODES=Oiorw :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
@@ -1938,41 +1926,6 @@ mod test {
                 assert!(roland.modes.registered);
                 assert!(!state.wallops_users.contains("roland"));
                 assert_eq!(0, state.invisible_users_count);
-            }
-
-            // Probar modos websocket y secure
-            line_stream
-                .send("MODE roland +Wz".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":roland!~roland@127.0.0.1 MODE roland +Wz".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            time::sleep(Duration::from_millis(50)).await;
-            {
-                let state = main_state.state.read().await;
-                let roland = state.users.get("roland").unwrap();
-                assert!(roland.modes.websocket);
-                assert!(roland.modes.secure);
-            }
-
-            line_stream
-                .send("MODE roland -Wz".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":roland!~roland@127.0.0.1 MODE roland -Wz".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            time::sleep(Duration::from_millis(50)).await;
-            {
-                let state = main_state.state.read().await;
-                let roland = state.users.get("roland").unwrap();
-                assert!(!roland.modes.websocket);
-                assert!(!roland.modes.secure);
             }
         }
 
