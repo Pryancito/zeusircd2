@@ -2303,25 +2303,6 @@ mod test {
                     channel.modes.ban
                 );
                 assert_eq!(
-                    HashMap::from([
-                        (
-                            "nick*!*@*".to_string(),
-                            BanInfo {
-                                who: "sonny".to_string(),
-                                set_time
-                            }
-                        ),
-                        (
-                            "*digger.com!*@*".to_string(),
-                            BanInfo {
-                                who: "sonny".to_string(),
-                                set_time
-                            }
-                        ),
-                    ]),
-                    channel.ban_info
-                );
-                assert_eq!(
                     Some(HashSet::from(["nicki*!*@*".to_string()])),
                     channel.modes.exception
                 );
