@@ -86,6 +86,14 @@ pub(crate) struct UserModes {
     pub(crate) secure: bool,
 }
 
+#[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
+pub(crate) struct DB {
+    pub database: String, // "sqlite", "mysql", or "postgres"
+    pub sqlite: Option<String>,
+    pub mysql: Option<String>, // e.g., "mysql://user:password@host:port/db_name"
+    pub postgres: Option<String>, // e.g., "postgresql://user:password@host:port/db_name"
+}
+
 impl fmt::Display for UserModes {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut s = '+'.to_string();
@@ -323,6 +331,7 @@ pub(crate) struct MainConfig {
     #[serde(deserialize_with = "tracing_log_level_deserialize")]
     pub(crate) log_level: tracing::Level,
     pub(crate) tls: Option<TLSConfig>,
+    pub(crate) database: Option<DB>,
     // If MainConfig modes we use Option to avoid unnecessary field definition if list
     // in this field should be. The administrator can omit fields for empty lists.
     #[validate]
@@ -445,6 +454,7 @@ impl Default for MainConfig {
             users: None,
             default_user_modes: UserModes::default(),
             tls: None,
+            database: None,
             log_file: None,
             log_level: tracing::Level::INFO,
         }

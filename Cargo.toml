@@ -14,6 +14,7 @@ keywords = ["irc"]
 tokio = { version = "1.0", features = [ "full" ] }
 tokio-util = { version = "0.7.0", features = [ "codec" ] }
 tokio-stream = "0.1"
+tokio-postgres = { version = "0.7", optional = true }
 tracing = "0.1"
 futures = "0.3.0"
 toml = "0.5"
@@ -34,6 +35,9 @@ tokio-openssl = { version = "0.6", optional = true }
 openssl = { version = "0.10", optional = true }
 lazy_static = "1.4"
 trust-dns-resolver = { version = "0.21", optional = true }
+sqlite = { version = "0.37.0", optional = true }
+async-trait = "0.1.73"
+mysql_async = { version = "0.35.1", optional = true }
 
 [features]
 default = []
@@ -42,6 +46,8 @@ tls_rustls = [ "rustls", "tokio-rustls", "rustls-pemfile" ]
 # use openssl if rustls with ring doesn't work - for example old non-SSE2 machines
 tls_openssl = [ "openssl", "tokio-openssl" ]
 dns_lookup = [ "trust-dns-resolver" ]
+sqlite3 = ["sqlite"]
+mysql = ["mysql_async"]
 
 [dependencies.tracing-subscriber]
 version = "0.3.1"
