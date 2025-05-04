@@ -88,10 +88,7 @@ pub(crate) struct UserModes {
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
 pub(crate) struct DB {
-    pub database: String, // "sqlite", "mysql", or "postgres"
-    pub sqlite: Option<String>,
-    pub mysql: Option<String>, // e.g., "mysql://user:password@host:port/db_name"
-    pub postgres: Option<String>, // e.g., "postgresql://user:password@host:port/db_name"
+    pub database: String, // "sqlite" or "mysql"
 }
 
 impl fmt::Display for UserModes {

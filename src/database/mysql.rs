@@ -41,6 +41,7 @@ pub mod mysql_impl {
                 conn.query_drop(
                     r"CREATE TABLE IF NOT EXISTS nicks (
                         nick VARCHAR(255) PRIMARY KEY,
+                        password VARCHAR(255) NOT NULL,
                         user VARCHAR(255) NOT NULL,
                         registration_time BIGINT UNSIGNED NOT NULL
                     )"
@@ -84,6 +85,46 @@ pub mod mysql_impl {
                     }
                     None => Ok(None),
                 }
+            } else {
+                Err("Database pool not initialized".into())
+            }
+        }
+
+        async fn get_nick_password(&self, nick: &str) -> Result<Option<String>, Box<dyn Error>> {
+            if let Some(pool) = &self.pool {
+                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                let result: Option<String> = conn
+                    .exec_first(
+                        "SELECT password FROM nicks WHERE nick = ?",
+                        (nick,),
+                    )
+                    .await
+                    .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+
+                match result {
+                    Some(password) => {
+                        Ok(Some(password))
+                    }
+                    None => Ok(None),
+                }
+            } else {
+                Err("Database pool not initialized".into())
+            }
+        }
+
+        async fn update_nick_password(
+            &mut self,
+            nick: &str,
+            password: &str,
+        ) -> Result<(), Box<dyn Error>> {
+            if let Some(pool) = &self.pool {
+                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                let query = format!("UPDATE nicks SET password = ? WHERE nick = ?");
+                let mut params = Vec::new();
+                params.push(Value::from(password));
+                params.push(Value::from(nick)); // Add `nick` to the params
+        
+                conn.exec_drop(query, params).await.map_err(|e| Box::new(e) as Box<dyn Error>)
             } else {
                 Err("Database pool not initialized".into())
             }

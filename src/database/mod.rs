@@ -13,6 +13,8 @@ pub trait NickDatabase: Send + Sync {
     async fn create_table(&mut self) -> Result<(), Box<dyn Error>>;
     async fn add_nick(&mut self, nick: &str, user: &str, registration_time: SystemTime) -> Result<(), Box<dyn Error>>;
     async fn get_nick_info(&self, nick: &str) -> Result<Option<(String, SystemTime)>, Box<dyn Error>>;
+    async fn get_nick_password(&self, nick: &str) -> Result<Option<String>, Box<dyn Error>>;
+    async fn update_nick_password(&mut self, nick: &str, password: &str) -> Result<(), Box<dyn Error>>;
     async fn update_nick_info(&mut self, nick: &str, user: Option<&str>, registration_time: Option<SystemTime>) -> Result<(), Box<dyn Error>>;
     async fn delete_nick(&mut self, nick: &str) -> Result<(), Box<dyn Error>>;
 }

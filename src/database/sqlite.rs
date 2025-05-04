@@ -44,6 +44,7 @@ pub mod sqlite_impl {
                 match db_guard.execute(
                     "CREATE TABLE IF NOT EXISTS nicks (
                         nick TEXT PRIMARY KEY,
+                        password TEXT NOT NULL,
                         user TEXT NOT NULL,
                         registration_time INTEGER NOT NULL
                     )"
@@ -95,6 +96,45 @@ pub mod sqlite_impl {
                     Ok(sqlite::State::Done) => Ok(None), // No rows found
                     Err(e) => Err(Box::new(e) as Box<dyn Error>), // Error from statement.next()
                 }
+            } else {
+                Err("Database not connected".into())
+            }
+        }
+
+        async fn get_nick_password(
+            &self,
+            nick: &str,
+        ) -> Result<Option<String>, Box<dyn Error>> {
+            if let Some(conn_mutex) = &self.connection {
+                let db_guard = conn_mutex.lock().unwrap();
+                let query = "SELECT password FROM nicks WHERE nick = ?";
+                let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+        
+                match statement.next() {
+                    Ok(sqlite::State::Row) => {
+                        // Process the row
+                        let password: String = statement.read(0).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                        Ok(Some(password))
+                    }
+                    Ok(sqlite::State::Done) => Ok(None), // No rows found
+                    Err(e) => Err(Box::new(e) as Box<dyn Error>), // Error from statement.next()
+                }
+            } else {
+                Err("Database not connected".into())
+            }
+        }
+
+        async fn update_nick_password(&mut self, nick: &str, password: &str) -> Result<(), Box<dyn Error>> {
+            if let Some(conn_mutex) = &self.connection {
+                let db_guard = conn_mutex.lock().unwrap();
+        
+                let query = format!("UPDATE nicks SET password = ? WHERE nick = ?");
+                let mut statement = db_guard.prepare(&query).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+        
+                statement.bind((1, password)).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error>)
             } else {
                 Err("Database not connected".into())
             }

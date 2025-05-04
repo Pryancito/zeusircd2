@@ -51,14 +51,14 @@ impl DBState {
         let mut nick_db: Box<dyn NickDatabase + Send + Sync> = match dbconf.unwrap().database.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let path = dbconf.unwrap().sqlite.as_ref().expect("SQLite path not configured");
+                let path = dbconf.unwrap().url.as_ref().expect("SQLite path not configured");
                 let mut db = SQLiteNickDatabase::new(&path);
                 db.connect("").await.expect("Failed to connect to SQLite");
                 Box::new(db)
             }
             #[cfg(feature = "mysql")]
             "mysql" => {
-                let url = dbconf.unwrap().mysql.as_ref().expect("MySQL URL not configured");
+                let url = dbconf.unwrap().url.as_ref().expect("MySQL URL not configured");
                 let mut db = MySqlNickDatabase::new(&url);
                 db.connect("").await.expect("Failed to connect to MySQL");
                 Box::new(db)
@@ -69,14 +69,14 @@ impl DBState {
         let mut channel_db: Box<dyn ChannelDatabase + Send + Sync> = match dbconf.unwrap().database.as_str() {
             #[cfg(feature = "sqlite")]
             "sqlite" => {
-                let path = dbconf.unwrap().sqlite.as_ref().expect("SQLite path not configured");
+                let path = dbconf.unwrap().url.as_ref().expect("SQLite path not configured");
                 let mut db = SQLiteChannelDatabase::new(&path);
                 db.connect("").await.expect("Failed to connect to SQLite");
                 Box::new(db)
             }
             #[cfg(feature = "mysql")]
             "mysql" => {
-                let url = dbconf.unwrap().mysql.as_ref().expect("MySQL URL not configured");
+                let url = dbconf.unwrap().url.as_ref().expect("MySQL URL not configured");
                 let mut db = MySqlChannelDatabase::new(&url);
                 db.connect("").await.expect("Failed to connect to MySQL");
                 Box::new(db)

@@ -41,6 +41,11 @@ log_file = "irc.log"
 # Certificate key file.
 #cert_key_file = "cert_key.crt"
 
+# Optional. Database (mysql & sqlite3)
+[database]
+database = "sqlite"
+url = "zeus.db"
+
 # Default user's mode that will be given after log in.
 [default_user_modes]
 # Invisible mode.
