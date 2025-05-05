@@ -47,49 +47,65 @@ pub struct DBState {
 
 impl DBState {
     pub(crate) async fn new(config: &MainConfig) -> Self {
-        let dbconf = config.database.as_ref().clone();
-        let mut nick_db: Box<dyn NickDatabase + Send + Sync> = match dbconf.unwrap().database.as_str() {
-            #[cfg(feature = "sqlite")]
-            "sqlite" => {
-                let path = dbconf.unwrap().url.as_str();
-                let mut db = SQLiteNickDatabase::new(&path);
-                db.connect("").await.expect("Failed to connect to SQLite");
-                Box::new(db)
-            }
-            #[cfg(feature = "mysql")]
-            "mysql" => {
-                let url = dbconf.unwrap().url.as_str();
-                let mut db = MySqlNickDatabase::new(&url);
-                db.connect("").await.expect("Failed to connect to MySQL");
-                Box::new(db)
-            }
-            _ => panic!("Unsupported database type: {}", dbconf.unwrap().database),
-        };
+        let db_config_option = &config.database;
 
-        let mut channel_db: Box<dyn ChannelDatabase + Send + Sync> = match dbconf.unwrap().database.as_str() {
-            #[cfg(feature = "sqlite")]
-            "sqlite" => {
-                let path = dbconf.unwrap().url.as_str();
-                let mut db = SQLiteChannelDatabase::new(&path);
-                db.connect("").await.expect("Failed to connect to SQLite");
-                Box::new(db)
-            }
-            #[cfg(feature = "mysql")]
-            "mysql" => {
-                let url = dbconf.unwrap().url.as_str();
-                let mut db = MySqlChannelDatabase::new(&url);
-                db.connect("").await.expect("Failed to connect to MySQL");
-                Box::new(db)
-            }
-            _ => panic!("Unsupported database type: {}", dbconf.unwrap().database),
-        };
+        if let Some(db_config) = db_config_option {
+            let _nick_db: Result<Box<dyn NickDatabase + Send + Sync>, String> = match db_config.database.as_str() {
+                #[cfg(feature = "sqlite")]
+                "sqlite" => {
+                    let path = &db_config.url;
+                    let mut db = SQLiteNickDatabase::new(path);
+                    let _ = db.connect("")
+                        .await
+                        .map_err(|e| format!("Failed to connect to SQLite: {}", e));
+                    Ok(Box::new(db))
+                }
+                #[cfg(feature = "mysql")]
+                "mysql" => {
+                    let url = &db_config.url;
+                    let mut db = MySqlNickDatabase::new(url);
+                    let _ = db.connect("")
+                        .await
+                        .map_err(|e| format!("Failed to connect to MySQL: {}", e));
+                    Ok(Box::new(db))
+                }
+                db_type => Err(format!("Unsupported database type: {}", db_type)),
+            };
 
-        nick_db.create_table().await.expect("Failed to create nick table");
-        channel_db.create_table().await.expect("Failed to create channel table");
+            let _channel_db: Result<Box<dyn ChannelDatabase + Send + Sync>, String> = match db_config.database.as_str() {
+                #[cfg(feature = "sqlite")]
+                "sqlite" => {
+                    let path = &db_config.url;
+                    let mut db = SQLiteChannelDatabase::new(path);
+                    let _ = db.connect("")
+                        .await
+                        .map_err(|e| format!("Failed to connect to SQLite: {}", e));
+                    Ok(Box::new(db))
+                }
+                #[cfg(feature = "mysql")]
+                "mysql" => {
+                    let url = &db_config.url;
+                    let mut db = MySqlChannelDatabase::new(url);
+                    let _ = db.connect("")
+                        .await
+                        .map_err(|e| format!("Failed to connect to MySQL: {}", e));
+                    Ok(Box::new(db))
+                }
+                db_type => Err(format!("Unsupported database type: {}", db_type)),
+            };
 
-        DBState {
-            nick_db: Arc::new(Mutex::new(nick_db)),
-            channel_db: Arc::new(Mutex::new(channel_db)),
+            let mut nick_db = _nick_db.expect("Failed to initialize nick database");
+            let mut channel_db = _channel_db.expect("Failed to initialize channel database");
+
+            nick_db.create_table().await.expect("Failed to create nick table");
+            channel_db.create_table().await.expect("Failed to create channel table");
+
+            DBState {
+                nick_db: Arc::new(Mutex::new(nick_db)),
+                channel_db: Arc::new(Mutex::new(channel_db)),
+            }
+        } else {
+            panic!("Database configuration is missing."); // Or handle this more gracefully
         }
     }
 }
