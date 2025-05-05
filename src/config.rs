@@ -89,6 +89,7 @@ pub(crate) struct UserModes {
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
 pub(crate) struct DB {
     pub database: String, // "sqlite" or "mysql"
+    pub url: String,
 }
 
 impl fmt::Display for UserModes {
