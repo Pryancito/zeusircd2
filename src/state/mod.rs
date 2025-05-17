@@ -458,6 +458,15 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                 error!("Error for {}: {}", conn_state.user_state.source, e);
             }
         }
+        let mut state = main_state.state.write().await;
+        if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
+            if conn_state.is_secure() {
+                user.modes.secure = true;
+            }
+            else if conn_state.is_websocket() {
+                user.modes.websocket = true;
+            }
+        }
         info!(
             "User {} gone from from server",
             conn_state.user_state.source
@@ -475,10 +484,6 @@ async fn user_state_process_tls(
 ) {
     match acceptor.accept(stream).await {
         Ok(tls_stream) => {
-            let mut state = self.state.write();
-            if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
-                user.modes.secure = true;
-            }
             user_state_process(
                 main_state,
                 DualTcpStream::SecureStream(Box::new(tls_stream)),
@@ -498,6 +503,7 @@ async fn user_state_process_tls_prepare(
     let ssl = Ssl::new(acceptor.context()).map_err(|e| e.to_string())?;
     let mut tls_stream = SslStream::new(ssl, stream).map_err(|e| e.to_string())?;
     use std::pin::Pin;
+    
     Pin::new(&mut tls_stream)
         .accept()
         .await
@@ -616,7 +622,7 @@ async fn handle_websocket_connection(
     _addr: SocketAddr,
     tls: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
-    if let Some(_tls_config) = tls {
+    if let Some(tls_config) = tls {
         #[cfg(feature = "tls_rustls")]
         {
             let config = {

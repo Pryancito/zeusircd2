@@ -664,6 +664,10 @@ impl ConnState {
     pub(crate) fn is_secure(&self) -> bool {
         self.stream.get_ref().is_secure()
     }
+
+    pub(crate) fn is_websocket(&self) -> bool {
+        self.stream.get_ref().is_websocket()
+    }
 }
 
 impl Drop for ConnState {
