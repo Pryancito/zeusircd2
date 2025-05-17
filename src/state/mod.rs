@@ -618,17 +618,17 @@ async fn dns_lookup_process(
 
 async fn handle_websocket_connection(
     stream: TcpStream,
-    _addr: SocketAddr,
-    tls: Option<TLSConfig>,
+    addr: SocketAddr,
+    tls_config: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
-    if let Some(tls_config) = tls {
-        #[cfg(feature = "tls_rustls")]
-        {
+    #[cfg(feature = "tls_rustls")]
+    {
+        if let Some(tlsconfig) = tls_config {
             let config = {
-                let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tls_config.cert_file)?))
+                let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
                     .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
                 let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
-                    &mut BufReader::new(File::open(tls_config.cert_key_file)?),
+                    &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
                 )
                 .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
 
@@ -640,21 +640,33 @@ async fn handle_websocket_connection(
             };
 
             let acceptor = TlsAcceptor::from(Arc::new(config));
-            let tls_stream = acceptor.accept(stream).await?;
-            let ws_stream = accept_async(tls_stream).await?;
-            Ok(DualTcpStream::SecureWebSocketStream(ws_stream))
+            let stream = acceptor.accept(stream).await?;
+            let ws_stream = accept_async(stream).await?;
+            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
         }
-        #[cfg(not(feature = "tls_rustls"))]
-        {
-            Err(Box::new(io::Error::new(
-                io::ErrorKind::Other,
-                "TLS no está habilitado",
-            )))
-        }
-    } else {
-        let ws_stream = accept_async(stream).await?;
-        Ok(DualTcpStream::WebSocketStream(ws_stream))
     }
+
+    #[cfg(feature = "tls_openssl")]
+    {
+        if let Some(tlsconfig) = tls_config {
+            let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+            acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
+            acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
+            let acceptor = Arc::new(acceptor.build());
+            
+            let ssl = Ssl::new(acceptor.context())?;
+            let mut tls_stream = SslStream::new(ssl, stream)?;
+            use std::pin::Pin;
+            Pin::new(&mut tls_stream).accept().await?;
+            
+            let ws_stream = accept_async(tls_stream).await?;
+            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
+        }
+    }
+
+    // Si no hay configuración TLS o no está habilitado, usamos WebSocket normal
+    let ws_stream = accept_async(stream).await?;
+    Ok(DualTcpStream::WebSocketStream(ws_stream))
 }
 
 // main routine to run server
