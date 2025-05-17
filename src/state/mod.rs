@@ -19,6 +19,7 @@
 
 use chrono::prelude::*;
 use futures::future::Fuse;
+use futures::FutureExt;
 #[cfg(feature = "dns_lookup")]
 use lazy_static::lazy_static;
 #[cfg(feature = "tls_openssl")]
@@ -184,12 +185,14 @@ impl MainState {
             .await
             .map_err(|e| e.to_string());
         conn_state.stream.flush().await.map_err(|e| e.to_string())?;
-        Ok(res?)
+        res
     }
 
     pub(crate) async fn get_quit_receiver(&self) -> Fuse<oneshot::Receiver<String>> {
         let mut state = self.state.write().await;
-        state.quit_receiver.take().unwrap()
+        let (sender, receiver) = oneshot::channel();
+        state.quit_sender = Some(sender);
+        receiver.fuse()
     }
 
     async fn process_internal(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn Error>> {
@@ -269,8 +272,8 @@ impl MainState {
                     // if end of stream
                     None => {
                         conn_state.quit.store(1, Ordering::SeqCst);
-                        return Err(Box::new(io::Error::new(
-                            io::ErrorKind::UnexpectedEof, "unexpected eof")))
+                        return Err(Box::new(
+                            io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof")))
                     }
                 };
 
@@ -611,9 +614,42 @@ async fn dns_lookup_process(
 async fn handle_websocket_connection(
     stream: TcpStream,
     _addr: SocketAddr,
+    tls: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
-    let ws_stream = accept_async(stream).await?;
-    Ok(DualTcpStream::WebSocketStream(ws_stream))
+    if let Some(_tls_config) = tls {
+        #[cfg(feature = "tls_rustls")]
+        {
+            let config = {
+                let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tls_config.cert_file)?))
+                    .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
+                let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
+                    &mut BufReader::new(File::open(tls_config.cert_key_file)?),
+                )
+                .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
+
+                rustls::ServerConfig::builder()
+                    .with_safe_defaults()
+                    .with_no_client_auth()
+                    .with_single_cert(certs, keys.remove(0))
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
+            };
+
+            let acceptor = TlsAcceptor::from(Arc::new(config));
+            let tls_stream = acceptor.accept(stream).await?;
+            let ws_stream = accept_async(tls_stream).await?;
+            Ok(DualTcpStream::SecureWebSocketStream(ws_stream))
+        }
+        #[cfg(not(feature = "tls_rustls"))]
+        {
+            Err(Box::new(io::Error::new(
+                io::ErrorKind::Other,
+                "TLS no está habilitado",
+            )))
+        }
+    } else {
+        let ws_stream = accept_async(stream).await?;
+        Ok(DualTcpStream::WebSocketStream(ws_stream))
+    }
 }
 
 // main routine to run server
@@ -631,13 +667,16 @@ pub(crate) async fn run_server(
     let mut handles = Vec::new();
     for listener_config in config.listeners {
         let main_state = main_state.clone();
-        let handle = if listener_config.tls.is_some() {
+        let handle = if listener_config.tls.is_some() && !listener_config.websocket {
+            let cloned_tls = listener_config.tls.clone();
+            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
             #[cfg(feature = "tls_rustls")]
             {
-                let tlsconfig = listener_config.tls.unwrap();
                 let config = {
-                    let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
-                        .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
+                    let tlsconfig = cloned_tls.unwrap();
+                    let certs =
+                        rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
+                            .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
                     let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
                         &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
                     )
@@ -651,10 +690,10 @@ pub(crate) async fn run_server(
                 };
 
                 let acceptor = TlsAcceptor::from(Arc::new(config));
-                let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
                 tokio::spawn(async move {
                     let mut quit_receiver = main_state.get_quit_receiver().await;
                     let mut do_quit = false;
+                    info!("Listen TLS {} on port: {}", listener_config.listen, listener_config.port);
                     while !do_quit {
                         tokio::select! {
                             res = listener.accept() => {
@@ -677,16 +716,16 @@ pub(crate) async fn run_server(
 
             #[cfg(feature = "tls_openssl")]
             {
-                let tlsconfig = listener_config.tls.unwrap();
+                let tlsconfig = cloned_tls.unwrap();
                 let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
                 acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
                 acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
                 let acceptor = Arc::new(acceptor.build());
-                let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
 
                 tokio::spawn(async move {
                     let mut quit_receiver = main_state.get_quit_receiver().await;
                     let mut do_quit = false;
+                    info!("Listen TLS {} on port: {}", listener_config.listen, listener_config.port);
                     while !do_quit {
                         tokio::select! {
                             res = listener.accept() => {
@@ -711,31 +750,29 @@ pub(crate) async fn run_server(
             tokio::spawn(async move { error!("Unsupported TLS") })
         } else if listener_config.websocket {
             let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
+            let tls_config = listener_config.tls.clone();
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
                 let mut do_quit = false;
+                info!("Listen Websocket {} on port: {}", listener_config.listen, listener_config.port);
                 while !do_quit {
                     tokio::select! {
                         res = listener.accept() => {
                             match res {
                                 Ok((stream, addr)) => {
-                                    match handle_websocket_connection(stream, addr).await {
+                                    match handle_websocket_connection(stream, addr, tls_config.clone()).await {
                                         Ok(ws_stream) => {
-                                            let mut state = main_state.state.write().await;
-                                            if let Some(user) = state.users.get_mut(&addr.to_string()) {
-                                                user.modes.websocket = true;
-                                            }
                                             tokio::spawn(user_state_process(main_state.clone(),
                                                     ws_stream, addr));
                                         }
-                                        Err(e) => error!("WebSocket handshake failed: {}", e),
+                                        Err(e) => error!("Error en handshake de WebSocket: {}", e),
                                     }
                                 }
-                                Err(e) => { error!("Accept connection error: {}", e); }
+                                Err(e) => { error!("Error al aceptar conexión: {}", e); }
                             };
                         }
                         Ok(msg) = &mut quit_receiver => {
-                            info!("Server quit: {}", msg);
+                            info!("Servidor cerrado: {}", msg);
                             do_quit = true;
                         }
                     };
@@ -746,6 +783,7 @@ pub(crate) async fn run_server(
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
                 let mut do_quit = false;
+                info!("Listen Plain {} on port: {}", listener_config.listen, listener_config.port);
                 while !do_quit {
                     tokio::select! {
                         res = listener.accept() => {
@@ -768,9 +806,12 @@ pub(crate) async fn run_server(
         handles.push(handle);
     }
 
+    // Modificamos el handle principal para manejar todos los handles de los listeners
     let handle = tokio::spawn(async move {
         for handle in handles {
-            handle.await.unwrap();
+            if let Err(e) = handle.await {
+                error!("Error en listener: {}", e);
+            }
         }
     });
 

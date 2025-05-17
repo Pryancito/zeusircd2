@@ -44,13 +44,14 @@ websocket = false
 
 [[listeners]]
 listen = "127.0.0.1"
-port = 6669
+port = 6697
 tls = { cert_file = "cert.crt", cert_key_file = "cert_key.crt" }
 websocket = false
 
 [[listeners]]
 listen = "127.0.0.1"
 port = 8080
+tls = { cert_file = "cert.crt", cert_key_file = "cert_key.crt" }
 websocket = true
 
 # Optional. Database (mysql & sqlite3)

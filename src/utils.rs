@@ -52,6 +52,10 @@ pub(crate) enum DualTcpStream {
     #[cfg(feature = "tls_openssl")]
     SecureStream(SslStream<TcpStream>),
     WebSocketStream(WebSocketStream<TcpStream>),
+    #[cfg(feature = "tls_rustls")]
+    SecureWebSocketStream(WebSocketStream<TlsStream<TcpStream>>),
+    #[cfg(feature = "tls_openssl")]
+    SecureWebSocketStream(WebSocketStream<SslStream<TcpStream>>),
 }
 
 impl DualTcpStream {
@@ -63,6 +67,10 @@ impl DualTcpStream {
             #[cfg(feature = "tls_openssl")]
             DualTcpStream::SecureStream(stream) => stream.get_ref(),
             DualTcpStream::WebSocketStream(stream) => stream.get_ref(),
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(stream) => stream.get_ref().get_ref().0,
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(stream) => stream.get_ref().get_ref(),
         }
     }
 
@@ -74,11 +82,15 @@ impl DualTcpStream {
             #[cfg(feature = "tls_openssl")]
             DualTcpStream::SecureStream(_) => true,
             DualTcpStream::WebSocketStream(_) => false,
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(_) => true,
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(_) => true,
         }
     }
 
     pub(crate) fn is_websocket(&self) -> bool {
-        matches!(self, DualTcpStream::WebSocketStream(_))
+        matches!(self, DualTcpStream::WebSocketStream(_) | DualTcpStream::SecureWebSocketStream(_))
     }
 }
 
@@ -108,24 +120,70 @@ impl AsyncRead for DualTcpStream {
                         Poll::Ready(Ok(()))
                     }
                     Poll::Ready(Some(Ok(Message::Ping(data)))) => {
-                        // Responder al ping con un pong
                         if let Err(e) = Pin::new(stream).start_send(Message::Pong(data)) {
                             return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
                         }
                         Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Some(Ok(Message::Pong(_)))) => {
-                        // Ignorar pongs
+                    Poll::Ready(Some(Ok(Message::Pong(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Close(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Frame(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(None) => Poll::Ready(Ok(())),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                let mut ws_buf = Vec::new();
+                match Pin::new(&mut *stream).poll_next(cx) {
+                    Poll::Ready(Some(Ok(Message::Text(text)))) => {
+                        ws_buf.extend_from_slice(text.as_bytes());
+                        buf.put_slice(&ws_buf);
                         Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Some(Ok(Message::Close(_)))) => {
-                        // Cerrar la conexión
+                    Poll::Ready(Some(Ok(Message::Binary(data)))) => {
+                        ws_buf.extend_from_slice(&data);
+                        buf.put_slice(&ws_buf);
                         Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Some(Ok(Message::Frame(_)))) => {
-                        // Ignorar frames raw
+                    Poll::Ready(Some(Ok(Message::Ping(data)))) => {
+                        if let Err(e) = Pin::new(stream).start_send(Message::Pong(data)) {
+                            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
+                        }
                         Poll::Ready(Ok(()))
                     }
+                    Poll::Ready(Some(Ok(Message::Pong(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Close(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Frame(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(None) => Poll::Ready(Ok(())),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                let mut ws_buf = Vec::new();
+                match Pin::new(&mut *stream).poll_next(cx) {
+                    Poll::Ready(Some(Ok(Message::Text(text)))) => {
+                        ws_buf.extend_from_slice(text.as_bytes());
+                        buf.put_slice(&ws_buf);
+                        Poll::Ready(Ok(()))
+                    }
+                    Poll::Ready(Some(Ok(Message::Binary(data)))) => {
+                        ws_buf.extend_from_slice(&data);
+                        buf.put_slice(&ws_buf);
+                        Poll::Ready(Ok(()))
+                    }
+                    Poll::Ready(Some(Ok(Message::Ping(data)))) => {
+                        if let Err(e) = Pin::new(stream).start_send(Message::Pong(data)) {
+                            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
+                        }
+                        Poll::Ready(Ok(()))
+                    }
+                    Poll::Ready(Some(Ok(Message::Pong(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Close(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(Message::Frame(_)))) => Poll::Ready(Ok(())),
                     Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                     Poll::Ready(None) => Poll::Ready(Ok(())),
                     Poll::Pending => Poll::Pending,
@@ -159,6 +217,32 @@ impl AsyncWrite for DualTcpStream {
                     Poll::Pending => Poll::Pending,
                 }
             }
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                match Pin::new(&mut *stream).poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {
+                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string())) {
+                            Ok(()) => Poll::Ready(Ok(buf.len())),
+                            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                        }
+                    }
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                match Pin::new(&mut *stream).poll_ready(cx) {
+                    Poll::Ready(Ok(())) => {
+                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string())) {
+                            Ok(()) => Poll::Ready(Ok(buf.len())),
+                            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                        }
+                    }
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
         }
     }
 
@@ -176,6 +260,22 @@ impl AsyncWrite for DualTcpStream {
                     Poll::Pending => Poll::Pending,
                 }
             }
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                match Pin::new(stream).poll_flush(cx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                match Pin::new(stream).poll_flush(cx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
         }
     }
 
@@ -187,6 +287,22 @@ impl AsyncWrite for DualTcpStream {
             #[cfg(feature = "tls_openssl")]
             DualTcpStream::SecureStream(stream) => Pin::new(stream).poll_shutdown(cx),
             DualTcpStream::WebSocketStream(stream) => {
+                match Pin::new(stream).poll_close(cx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_rustls")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
+                match Pin::new(stream).poll_close(cx) {
+                    Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
+            #[cfg(feature = "tls_openssl")]
+            DualTcpStream::SecureWebSocketStream(stream) => {
                 match Pin::new(stream).poll_close(cx) {
                     Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
                     Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),

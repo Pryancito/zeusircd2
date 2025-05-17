@@ -631,10 +631,37 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
     ) -> Result<(), Box<dyn Error>> {
+        // Obtener el nick del usuario que se va
+        if let Some(nick) = &conn_state.user_state.nick {
+            let mut state = self.state.write().await;
+            
+            // Si el usuario existe en el estado
+            if let Some(user) = state.users.get(nick) {
+                // Notificar a todos los usuarios en los canales compartidos
+                for channel in &user.channels {
+                    let chanobj = state.channels.get(&channel.to_string()).unwrap();
+                    for nickname in chanobj.users.keys() {
+                        if nickname != nick.as_str() {
+                            state.users.get(&nickname.clone()).unwrap().send_msg_display(
+                                &conn_state.user_state.source,
+                                "QUIT :Client Quit",
+                            )?;
+                        }
+                    }
+                }
+                
+                // Remover al usuario del estado
+                state.remove_user(nick);
+            }
+        }
+
+        // Marcar la conexión para cerrar
         conn_state.quit.store(1, Ordering::SeqCst);
-        info!("User {} quit", conn_state.user_state.source);
-        self.feed_msg(&mut conn_state.stream, "ERROR: Closing connection")
+        
+        // Enviar mensaje de error al cliente
+        self.feed_msg(&mut conn_state.stream, "ERROR :Closing connection")
             .await?;
+            
         Ok(())
     }
 }
