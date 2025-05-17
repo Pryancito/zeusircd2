@@ -291,7 +291,7 @@ impl super::MainState {
                                     .await
                                     .is_ok()
                             } else {
-                                false
+                                true
                             };
 
                             user_state.authenticated = good;

@@ -8,7 +8,7 @@ admin_info2 = "IRCI is good server"
 info = "This is IRC server"
 # Optional password required to login to your IRC server. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
+#password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
 # Name of IRC network.
 network = "IRCInetwork"
 # Maximal number of acceptable connections.

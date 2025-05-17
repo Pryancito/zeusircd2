@@ -35,7 +35,6 @@ use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
-use tokio::net::TcpStream;
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 #[cfg(feature = "tls_openssl")]
@@ -185,7 +184,7 @@ impl MainState {
             .await
             .map_err(|e| e.to_string());
         conn_state.stream.flush().await.map_err(|e| e.to_string())?;
-        res
+        Ok(res?)
     }
 
     pub(crate) async fn get_quit_receiver(&self) -> Fuse<oneshot::Receiver<String>> {
