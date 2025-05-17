@@ -59,7 +59,7 @@ pub(crate) enum DualTcpStream {
 }
 
 impl DualTcpStream {
-    pub(crate) fn get_ref(&self) -> &TcpStream {
+    /*pub(crate) fn get_ref(&self) -> &TcpStream {
         match self {
             DualTcpStream::PlainStream(stream) => stream,
             #[cfg(feature = "tls_rustls")]
@@ -72,7 +72,7 @@ impl DualTcpStream {
             #[cfg(feature = "tls_openssl")]
             DualTcpStream::SecureWebSocketStream(stream) => stream.get_ref().get_ref(),
         }
-    }
+    }*/
 
     pub(crate) fn is_secure(&self) -> bool {
         match self {

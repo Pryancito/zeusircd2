@@ -707,7 +707,6 @@ pub(super) struct VolatileState {
     pub(super) max_users_count: usize,
     pub(super) nick_histories: HashMap<String, Vec<NickHistoryEntry>>,
     pub(super) quit_sender: Option<oneshot::Sender<String>>,
-    pub(super) quit_receiver: Option<Fuse<oneshot::Receiver<String>>>,
 }
 
 impl VolatileState {
@@ -737,7 +736,7 @@ impl VolatileState {
             });
         }
 
-        let (quit_sender, quit_receiver) = oneshot::channel();
+        let (quit_sender, _) = oneshot::channel();
         VolatileState {
             users: HashMap::new(),
             channels,
@@ -747,7 +746,6 @@ impl VolatileState {
             max_users_count: 0,
             nick_histories: HashMap::new(),
             quit_sender: Some(quit_sender),
-            quit_receiver: Some(quit_receiver.fuse()),
         }
     }
 

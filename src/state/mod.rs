@@ -49,7 +49,6 @@ use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
 use tokio_tungstenite::accept_async;
-use tungstenite::handshake::server::Request;
 
 use crate::command::*;
 use crate::config::*;
@@ -618,7 +617,7 @@ async fn dns_lookup_process(
 
 async fn handle_websocket_connection(
     stream: TcpStream,
-    addr: SocketAddr,
+    _addr: SocketAddr,
     tls_config: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
     #[cfg(feature = "tls_rustls")]
