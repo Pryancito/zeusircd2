@@ -90,7 +90,14 @@ impl DualTcpStream {
     }
 
     pub(crate) fn is_websocket(&self) -> bool {
-        matches!(self, DualTcpStream::WebSocketStream(_) | DualTcpStream::SecureWebSocketStream(_))
+        #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+        {
+            matches!(self, DualTcpStream::WebSocketStream(_) | DualTcpStream::SecureWebSocketStream(_))
+        }
+        #[cfg(not(any(feature = "tls_rustls", feature = "tls_openssl")))]
+        {
+            matches!(self, DualTcpStream::WebSocketStream(_))
+        }
     }
 }
 
