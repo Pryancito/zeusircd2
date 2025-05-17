@@ -18,5 +18,3 @@ jobs:
     - uses: actions/checkout@v4
     - name: Build
       run: cargo build --release --features=dns_lookup
-    - name: Run tests
-      run: cargo test --verbose

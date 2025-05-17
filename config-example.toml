@@ -5,12 +5,7 @@ admin_info = "IRCI is local IRC server"
 # Administrative info 2 about your server.
 admin_info2 = "IRCI is good server"
 # Info about your server.
-info = "This is IRCI server"
-# Address from your server is listening connections.
-listen = "127.0.0.1"
-# TCP port from your server is listening connections. Typically can be 6667 or
-# for 6669 TLS connections.
-port = 6667
+info = "This is IRC server"
 # Optional password required to login to your IRC server. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
 password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
@@ -34,12 +29,29 @@ log_level = "INFO"
 # Optional. Log to specified file.
 log_file = "irc.log"
 
+
+# List of listeners (IP:port combinations)
+[[listeners]]
+# Address from your server is listening connections.
+listen = "127.0.0.1"
+# TCP port from your server is listening connections. Typically can be 6667 or
+# for 6669 TLS connections.
+port = 6667
 # Optional. Set secure TLS connection.
-#[tls]
-# Certificate file.
-#cert_file = "cert.crt"
-# Certificate key file.
-#cert_key_file = "cert_key.crt"
+#tls = { cert_file = "cert.crt", cert_key_file = "cert_key.crt" }
+# Enable WebSocket support for this listener
+websocket = false
+
+[[listeners]]
+listen = "127.0.0.1"
+port = 6669
+tls = { cert_file = "cert.crt", cert_key_file = "cert_key.crt" }
+websocket = false
+
+[[listeners]]
+listen = "127.0.0.1"
+port = 8080
+websocket = true
 
 # Optional. Database (mysql & sqlite3)
 [database]

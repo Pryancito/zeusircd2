@@ -66,7 +66,7 @@ pub(crate) struct TLSConfig {
     pub(crate) cert_key_file: String,
 }
 
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate)]
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct OperatorConfig {
     #[validate(custom = "validate_username")]
     pub(crate) name: String,
@@ -283,7 +283,7 @@ impl fmt::Display for ChannelModes {
     }
 }
 
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate)]
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct ChannelConfig {
     #[validate(custom = "validate_channel")]
     pub(crate) name: String,
@@ -292,7 +292,7 @@ pub(crate) struct ChannelConfig {
     pub(crate) modes: ChannelModes,
 }
 
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate)]
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct UserConfig {
     #[validate(custom = "validate_username")]
     pub(crate) name: String,
@@ -304,8 +304,16 @@ pub(crate) struct UserConfig {
     pub(crate) mask: Option<String>,
 }
 
+#[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
+pub(crate) struct ListenerConfig {
+    pub(crate) listen: IpAddr,
+    pub(crate) port: u16,
+    pub(crate) tls: Option<TLSConfig>,
+    pub(crate) websocket: bool,
+}
+
 /// Main configuration structure.
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate)]
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct MainConfig {
     #[validate(contains = ".")]
     pub(crate) name: String,
@@ -314,8 +322,7 @@ pub(crate) struct MainConfig {
     pub(crate) admin_email: Option<String>,
     pub(crate) info: String,
     pub(crate) motd: String,
-    pub(crate) listen: IpAddr,
-    pub(crate) port: u16,
+    pub(crate) listeners: Vec<ListenerConfig>,
     pub(crate) network: String,
     #[validate(custom = "validate_password_hash")]
     pub(crate) password: Option<String>,
@@ -328,10 +335,7 @@ pub(crate) struct MainConfig {
     pub(crate) log_file: Option<String>,
     #[serde(deserialize_with = "tracing_log_level_deserialize")]
     pub(crate) log_level: tracing::Level,
-    pub(crate) tls: Option<TLSConfig>,
     pub(crate) database: Option<DB>,
-    // If MainConfig modes we use Option to avoid unnecessary field definition if list
-    // in this field should be. The administrator can omit fields for empty lists.
     #[validate]
     pub(crate) operators: Option<Vec<OperatorConfig>>,
     #[validate]
@@ -371,10 +375,10 @@ impl MainConfig {
         {
             let mut config: MainConfig = toml::from_str(&config_str)?;
             if let Some(addr) = cli.listen {
-                config.listen = addr;
+                config.listeners.iter_mut().for_each(|l| l.listen = addr);
             }
             if let Some(port) = cli.port {
-                config.port = port;
+                config.listeners.iter_mut().for_each(|l| l.port = port);
             }
             if let Some(name) = cli.name {
                 config.name = name;
@@ -393,9 +397,11 @@ impl MainConfig {
 
             if let Some(tls_cert_file) = cli.tls_cert_file {
                 if let Some(tls_cert_key_file) = cli.tls_cert_key_file {
-                    config.tls = Some(TLSConfig {
-                        cert_file: tls_cert_file,
-                        cert_key_file: tls_cert_key_file,
+                    config.listeners.iter_mut().for_each(|l| {
+                        l.tls = Some(TLSConfig {
+                            cert_file: tls_cert_file.clone(),
+                            cert_key_file: tls_cert_key_file.clone(),
+                        });
                     });
                 }
             }
@@ -437,8 +443,12 @@ impl Default for MainConfig {
             admin_info2: None,
             admin_email: None,
             info: "This is IRC server".to_string(),
-            listen: "127.0.0.1".parse().unwrap(),
-            port: 6667,
+            listeners: vec![ListenerConfig {
+                listen: "127.0.0.1".parse().unwrap(),
+                port: 6667,
+                tls: None,
+                websocket: false,
+            }],
             network: "IRCnetwork".to_string(),
             password: None,
             motd: "Hello, world!".to_string(),
@@ -451,7 +461,6 @@ impl Default for MainConfig {
             operators: None,
             users: None,
             default_user_modes: UserModes::default(),
-            tls: None,
             database: None,
             log_file: None,
             log_level: tracing::Level::INFO,

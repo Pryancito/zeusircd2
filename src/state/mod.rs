@@ -33,7 +33,7 @@ use std::io::BufReader;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
-use tokio::net::TcpListener;
+use tokio::net::{TcpListener, TcpStream};
 #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
 use tokio::net::TcpStream;
 use tokio::sync::{oneshot, RwLock};
@@ -49,6 +49,8 @@ use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
+use tokio_tungstenite::accept_async;
+use tungstenite::handshake::server::Request;
 
 use crate::command::*;
 use crate::config::*;
@@ -607,6 +609,14 @@ async fn dns_lookup_process(
     }
 }
 
+async fn handle_websocket_connection(
+    stream: TcpStream,
+    _addr: SocketAddr,
+) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
+    let ws_stream = accept_async(stream).await?;
+    Ok(DualTcpStream::WebSocketStream(ws_stream))
+}
+
 // main routine to run server
 pub(crate) async fn run_server(
     config: MainConfig,
@@ -615,109 +625,156 @@ pub(crate) async fn run_server(
     if config.dns_lookup {
         initialize_dns_resolver();
     }
-    let listener = TcpListener::bind((config.listen, config.port)).await?;
-    let cloned_tls = config.tls.clone();
-    let main_state = Arc::new(MainState::new_from_config(config));
+
+    let main_state = Arc::new(MainState::new_from_config(config.clone()));
     let main_state_to_return = main_state.clone();
-    let handle = if cloned_tls.is_some() {
-        #[cfg(feature = "tls_rustls")]
-        {
-            let config = {
-                let tlsconfig = cloned_tls.unwrap();
-                let certs =
-                    rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
+
+    let mut handles = Vec::new();
+    for listener_config in config.listeners {
+        let main_state = main_state.clone();
+        let handle = if listener_config.tls.is_some() {
+            #[cfg(feature = "tls_rustls")]
+            {
+                let tlsconfig = listener_config.tls.unwrap();
+                let config = {
+                    let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
                         .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
-                let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
-                    &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
-                )
-                .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
+                    let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
+                        &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
+                    )
+                    .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
 
-                rustls::ServerConfig::builder()
-                    .with_safe_defaults()
-                    .with_no_client_auth()
-                    .with_single_cert(certs, keys.remove(0))
-                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
-            };
+                    rustls::ServerConfig::builder()
+                        .with_safe_defaults()
+                        .with_no_client_auth()
+                        .with_single_cert(certs, keys.remove(0))
+                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
+                };
 
-            let acceptor = TlsAcceptor::from(Arc::new(config));
-            tokio::spawn(async move {
-                let mut quit_receiver = main_state.get_quit_receiver().await;
-                let mut do_quit = false;
-                while !do_quit {
-                    tokio::select! {
-                        res = listener.accept() => {
-                            match res {
-                                Ok((stream, addr)) => {
-                                    tokio::spawn(user_state_process_tls(main_state.clone(),
-                                            stream, acceptor.clone(), addr));
-                                }
-                                Err(e) => { error!("Accept connection error: {}", e); }
-                            };
-                        }
-                        Ok(msg) = &mut quit_receiver => {
-                            info!("Server quit: {}", msg);
-                            do_quit = true;
-                        }
-                    };
-                }
-            })
-        }
-
-        #[cfg(feature = "tls_openssl")]
-        {
-            let tlsconfig = cloned_tls.unwrap();
-            let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-            acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
-            acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
-            let acceptor = Arc::new(acceptor.build());
-
-            tokio::spawn(async move {
-                let mut quit_receiver = main_state.get_quit_receiver().await;
-                let mut do_quit = false;
-                while !do_quit {
-                    tokio::select! {
-                        res = listener.accept() => {
-                            match res {
-                                Ok((stream, addr)) => {
-                                    tokio::spawn(user_state_process_tls(main_state.clone(),
-                                            stream, acceptor.clone(), addr));
-                                }
-                                Err(e) => { error!("Accept connection error: {}", e); }
-                            };
-                        }
-                        Ok(msg) = &mut quit_receiver => {
-                            info!("Server quit: {}", msg);
-                            do_quit = true;
-                        }
-                    };
-                }
-            })
-        }
-
-        #[cfg(not(any(feature = "tls_rustls", feature = "tls_openssl")))]
-        tokio::spawn(async move { error!("Unsupported TLS") })
-    } else {
-        tokio::spawn(async move {
-            let mut quit_receiver = main_state.get_quit_receiver().await;
-            let mut do_quit = false;
-            while !do_quit {
-                tokio::select! {
-                    res = listener.accept() => {
-                        match res {
-                            Ok((stream, addr)) => {
-                                tokio::spawn(user_state_process(main_state.clone(),
-                                        DualTcpStream::PlainStream(stream), addr)); }
-                            Err(e) => { error!("Accept connection error: {}", e); }
+                let acceptor = TlsAcceptor::from(Arc::new(config));
+                let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
+                tokio::spawn(async move {
+                    let mut quit_receiver = main_state.get_quit_receiver().await;
+                    let mut do_quit = false;
+                    while !do_quit {
+                        tokio::select! {
+                            res = listener.accept() => {
+                                match res {
+                                    Ok((stream, addr)) => {
+                                        tokio::spawn(user_state_process_tls(main_state.clone(),
+                                                stream, acceptor.clone(), addr));
+                                    }
+                                    Err(e) => { error!("Accept connection error: {}", e); }
+                                };
+                            }
+                            Ok(msg) = &mut quit_receiver => {
+                                info!("Server quit: {}", msg);
+                                do_quit = true;
+                            }
                         };
                     }
-                    Ok(msg) = &mut quit_receiver => {
-                        info!("Server quit: {}", msg);
-                        do_quit = true;
-                    }
-                };
+                })
             }
-        })
-    };
+
+            #[cfg(feature = "tls_openssl")]
+            {
+                let tlsconfig = listener_config.tls.unwrap();
+                let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
+                acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
+                acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
+                let acceptor = Arc::new(acceptor.build());
+                let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
+
+                tokio::spawn(async move {
+                    let mut quit_receiver = main_state.get_quit_receiver().await;
+                    let mut do_quit = false;
+                    while !do_quit {
+                        tokio::select! {
+                            res = listener.accept() => {
+                                match res {
+                                    Ok((stream, addr)) => {
+                                        tokio::spawn(user_state_process_tls(main_state.clone(),
+                                                stream, acceptor.clone(), addr));
+                                    }
+                                    Err(e) => { error!("Accept connection error: {}", e); }
+                                };
+                            }
+                            Ok(msg) = &mut quit_receiver => {
+                                info!("Server quit: {}", msg);
+                                do_quit = true;
+                            }
+                        };
+                    }
+                })
+            }
+
+            #[cfg(not(any(feature = "tls_rustls", feature = "tls_openssl")))]
+            tokio::spawn(async move { error!("Unsupported TLS") })
+        } else if listener_config.websocket {
+            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
+            tokio::spawn(async move {
+                let mut quit_receiver = main_state.get_quit_receiver().await;
+                let mut do_quit = false;
+                while !do_quit {
+                    tokio::select! {
+                        res = listener.accept() => {
+                            match res {
+                                Ok((stream, addr)) => {
+                                    match handle_websocket_connection(stream, addr).await {
+                                        Ok(ws_stream) => {
+                                            let mut state = main_state.state.write().await;
+                                            if let Some(user) = state.users.get_mut(&addr.to_string()) {
+                                                user.modes.websocket = true;
+                                            }
+                                            tokio::spawn(user_state_process(main_state.clone(),
+                                                    ws_stream, addr));
+                                        }
+                                        Err(e) => error!("WebSocket handshake failed: {}", e),
+                                    }
+                                }
+                                Err(e) => { error!("Accept connection error: {}", e); }
+                            };
+                        }
+                        Ok(msg) = &mut quit_receiver => {
+                            info!("Server quit: {}", msg);
+                            do_quit = true;
+                        }
+                    };
+                }
+            })
+        } else {
+            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
+            tokio::spawn(async move {
+                let mut quit_receiver = main_state.get_quit_receiver().await;
+                let mut do_quit = false;
+                while !do_quit {
+                    tokio::select! {
+                        res = listener.accept() => {
+                            match res {
+                                Ok((stream, addr)) => {
+                                    tokio::spawn(user_state_process(main_state.clone(),
+                                            DualTcpStream::PlainStream(stream), addr));
+                                }
+                                Err(e) => { error!("Accept connection error: {}", e); }
+                            };
+                        }
+                        Ok(msg) = &mut quit_receiver => {
+                            info!("Server quit: {}", msg);
+                            do_quit = true;
+                        }
+                    };
+                }
+            })
+        };
+        handles.push(handle);
+    }
+
+    let handle = tokio::spawn(async move {
+        for handle in handles {
+            handle.await.unwrap();
+        }
+    });
+
     Ok((main_state_to_return, handle))
 }
 
@@ -744,10 +801,8 @@ mod test {
         //    initialize_logging(&MainConfig::default());
         //});
         let mut config = config;
-        config.port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let port = config.port;
         let (main_state, handle) = run_server(config).await.unwrap();
-        (main_state, handle, port)
+        (main_state, handle, 6669)
     }
 
     pub(crate) async fn quit_test_server(main_state: Arc<MainState>, handle: JoinHandle<()>) {

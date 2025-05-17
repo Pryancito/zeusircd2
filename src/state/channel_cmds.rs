@@ -1177,7 +1177,7 @@ mod test {
             time::sleep(Duration::from_millis(70)).await;
             {
                 let mut state = main_state.state.write().await;
-                let mut chmodes = &mut state.channels.get_mut("#secrets").unwrap().modes;
+                let chmodes = &mut state.channels.get_mut("#secrets").unwrap().modes;
                 chmodes.ban = Some(
                     [
                         "roland!*@*".to_string(),
@@ -1246,7 +1246,7 @@ mod test {
             time::sleep(Duration::from_millis(70)).await;
             {
                 let mut state = main_state.state.write().await;
-                let mut chmodes = &mut state.channels.get_mut("#exclusive").unwrap().modes;
+                let chmodes = &mut state.channels.get_mut("#exclusive").unwrap().modes;
                 chmodes.invite_only = true;
                 chmodes.invite_exception = Some(["ex*!*@*".to_string()].into());
             }
@@ -1459,7 +1459,7 @@ mod test {
                     .unwrap()
                     .modes
                     .invite_only = true;
-                let mut modes = &mut state.channels.get_mut("#furnitures").unwrap().modes;
+                let modes = &mut state.channels.get_mut("#furnitures").unwrap().modes;
                 modes.invite_only = true;
                 modes.invite_exception = Some(["*g*!*@*".to_string()].into());
             }
