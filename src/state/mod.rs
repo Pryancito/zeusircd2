@@ -35,7 +35,6 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-#[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 #[cfg(feature = "tls_openssl")]
