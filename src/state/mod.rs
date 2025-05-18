@@ -444,6 +444,11 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
     if let Some(mut conn_state) = main_state.register_conn_state(addr.ip(), line_stream) {
         #[cfg(feature = "dns_lookup")]
         if main_state.config.dns_lookup {
+            let _ = main_state.feed_msg(
+                &mut conn_state.stream,
+                "*** Looking hostname.",
+            )
+            .await;
             conn_state.run_dns_lookup();
         }
         #[cfg(not(feature = "dns_lookup"))]

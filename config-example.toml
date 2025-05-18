@@ -22,7 +22,7 @@ pong_timeout = 30
 # MOTD - Message of the Day.
 motd = "Hello, guys!"
 # DNS Lookup. If true then server try to get domain name of the client from DNS.
-dns_lookup = false
+dns_lookup = true
 # Minimal log level. Log Levels from lowest:
 # TRACE, DEBUG, INFO, WARN, ERROR.
 log_level = "INFO"
@@ -68,7 +68,7 @@ oper = false
 # Local operator mode.
 local_oper = false
 # Registered mode.
-registered = true
+registered = false
 # Wallops mode.
 wallops = false
 # Websocket mode.
@@ -77,35 +77,35 @@ websocket = false
 secure = false
 
 # Optional. List of operators
-[[operators]]
+#[[operators]]
 # Name of operator. It should be used in OPER as the first parameter.
-name = "matszpk"
+#name = "matszpk"
 # Required password to authenticate an operator. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-password = "xVfVq4pvFosvOQb0IVaPMkK22u0ZF2Ki7XB9yRsGbnEbL6WXhQCdpOwDV62HZ0MS5RjqmfrQJT7lV3aohUa3uw"
+#password = "xVfVq4pvFosvOQb0IVaPMkK22u0ZF2Ki7XB9yRsGbnEbL6WXhQCdpOwDV62HZ0MS5RjqmfrQJT7lV3aohUa3uw"
 # Optional. Source mask of source that will be checked for user source.
 # Source is combination of the nick, name and host.
-mask = "*!*@localhost"
+#mask = "*!*@localhost"
 
 # Optional. List of registered users.
-[[users]]
+#[[users]]
 # Name of user.
-name = "Moebius"
+#name = "Moebius"
 # Nick of user.
-nick = "Moebius"
+#nick = "Moebius"
 # Required password to authenticate an user. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
+#password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
 # Optional. Source mask of source that will be checked for user source.
 # Source is combination of the nick, name and host.
-mask = "*!*@127.0.0.1"
+#mask = "*!*@127.0.0.1"
 
 # Optional. List of preconfigured channels.
 [[channels]]
 # Name of channel.
-name = "#Devel"
+name = "#zeusircd"
 # Optional. Topic of channel.
-topic = "Some topic"
+topic = "Main channel of ZeusiRCd. Comming soon."
 
 # Channel modes.
 [channels.modes]
@@ -113,7 +113,7 @@ topic = "Some topic"
 ban = [ "*!*@localhost" ]
 # Optional. List of ban exceptions. It is list of source mask to sources that will be ignored
 # during determining bans.
-excpetion = [ "*!*@localhost" ]
+exception = [ "*!*@localhost" ]
 # Optional. List of invite exceptions. It is list of source mask to sources that
 # will be ignored during determining who must have invitation.
 invite_exception = [ "*!*@localhost" ]
