@@ -633,35 +633,45 @@ impl super::MainState {
     ) -> Result<(), Box<dyn Error>> {
         // Obtener el nick del usuario que se va
         if let Some(nick) = &conn_state.user_state.nick {
-            let mut state = self.state.write().await;
-            
-            // Si el usuario existe en el estado
-            if let Some(user) = state.users.get(nick) {
-                // Notificar a todos los usuarios en los canales compartidos
-                for channel in &user.channels {
-                    let chanobj = state.channels.get(&channel.to_string()).unwrap();
-                    for nickname in chanobj.users.keys() {
-                        if nickname != nick.as_str() {
-                            state.users.get(&nickname.clone()).unwrap().send_msg_display(
+            // Primero obtenemos una copia de los canales del usuario
+            let user_channels = {
+                let state = self.state.read().await;
+                if let Some(user) = state.users.get(nick) {
+                    user.channels.clone()
+                } else {
+                    return Ok(());
+                }
+            };
+
+            // Notificar a todos los usuarios en los canales compartidos
+            for channel in &user_channels {
+                let channel_users = {
+                    let state = self.state.read().await;
+                    if let Some(chanobj) = state.channels.get(&channel.to_string()) {
+                        chanobj.users.keys().cloned().collect::<Vec<_>>()
+                    } else {
+                        continue;
+                    }
+                };
+
+                for nickname in channel_users {
+                    if nickname != nick.as_str() {
+                        let state = self.state.read().await;
+                        if let Some(user) = state.users.get(&nickname) {
+                            let _ = user.send_msg_display(
                                 &conn_state.user_state.source,
                                 "QUIT :Client Quit",
-                            )?;
+                            );
                         }
                     }
                 }
-                
-                // Remover al usuario del estado
-                state.remove_user(nick);
             }
+
+            // Remover al usuario del estado
+            let mut state = self.state.write().await;
+            state.remove_user(nick);
         }
 
-        // Marcar la conexión para cerrar
-        conn_state.quit.store(1, Ordering::SeqCst);
-        
-        // Enviar mensaje de error al cliente
-        self.feed_msg(&mut conn_state.stream, "ERROR :Closing connection")
-            .await?;
-            
         Ok(())
     }
 }
