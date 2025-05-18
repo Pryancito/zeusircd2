@@ -452,21 +452,38 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
         }
 
         while !conn_state.is_quit() {
-            if let Err(e) = main_state.process(&mut conn_state).await {
-                error!("Error for {}: {}", conn_state.user_state.source, e);
+            match main_state.process(&mut conn_state).await {
+                Ok(_) => {
+                    // Solo actualizamos los modos después de que el usuario esté autenticado
+                    if conn_state.user_state.authenticated {
+                        if let Some(nick) = &conn_state.user_state.nick {
+                            let mut state = main_state.state.write().await;
+                            if let Some(user) = state.users.get_mut(nick) {
+                                if conn_state.is_secure() {
+                                    user.modes.secure = true;
+                                }
+                                else if conn_state.is_websocket() {
+                                    user.modes.websocket = true;
+                                }
+                            }
+                        }
+                    }
+                    continue;
+                },
+                Err(e) => {
+                    if e.to_string().contains("unexpected eof") {
+                        info!("Conexión cerrada por el cliente: {}", conn_state.user_state.source);
+                    } else {
+                        error!("Error para {}: {}", conn_state.user_state.source, e);
+                    }
+                    break;
+                }
             }
         }
-        let mut state = main_state.state.write().await;
-        if let Some(user) = state.users.get_mut(&conn_state.user_state.nick.as_ref().unwrap().to_string()) {
-            if conn_state.is_secure() {
-                user.modes.secure = true;
-            }
-            else if conn_state.is_websocket() {
-                user.modes.websocket = true;
-            }
-        }
+
+        // Limpieza de recursos
         info!(
-            "User {} gone from from server",
+            "User {} gone from server",
             conn_state.user_state.source
         );
         main_state.remove_user(&conn_state).await;
