@@ -120,15 +120,15 @@ invite_exception = [ "*!*@localhost" ]
 # Optional. Channel key that required to join.
 key = "blabla"
 # Optional. List of founders. It is list of nicks.
-founders = [ "matszpk" ]
+founders = [ "Moebius" ]
 # Optional. List of protected users. It is list of nicks.
 protecteds = [ "matszpk" ]
 # Optional. List of operators. It is list of nicks.
-operators = [ "matszpk" ]
+operators = [ "Moebius" ]
 # Optional. List of half operators. It is list of nicks.
 half_operators = [ "matszpk" ]
 # Optional. List of voices. It is list of nicks.
-voices = [ "matszpk" ]
+voices = [ "Pryancito" ]
 # If true then channel is moderated and user need voice channel's mode.
 moderated = false
 # If true then user need invitation to join channel.

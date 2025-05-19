@@ -641,7 +641,7 @@ impl super::MainState {
                                     if let Some(other_user) = state.users.get(other_nick) {
                                         let _ = other_user.send_msg_display(
                                             &conn_state.user_state.source,
-                                            format!("QUIT :Server Quit ({})", conn_state.user_state.quit_reason),
+                                            format!("QUIT :Server Quit: {}", conn_state.user_state.quit_reason),
                                         );
                                     }
                                 }

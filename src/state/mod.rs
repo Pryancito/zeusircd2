@@ -206,16 +206,17 @@ impl MainState {
             }
             Some(_) = conn_state.timeout_receiver.recv() => {
                 info!("Pong timeout for {}", conn_state.user_state.source);
+                conn_state.user_state.quit_reason = "Pong timeout".to_string();
                 self.feed_msg(&mut conn_state.stream,
                             "ERROR :Pong timeout, connection will be closed.").await?;
                 conn_state.quit.store(1, Ordering::SeqCst);
                 Ok(())
             }
             Ok((killer, comment)) = &mut conn_state.quit_receiver => {
-                info!("User {} killed by {}: {}", conn_state.user_state.source,
+                let msg = format!("User {} killed by {}: {}", conn_state.user_state.source,
                             killer, comment);
-                self.feed_msg(&mut conn_state.stream,
-                        format!("ERROR :User killed by {}: {}", killer, comment)).await?;
+                conn_state.user_state.quit_reason = msg.to_string();
+                self.feed_msg(&mut conn_state.stream, msg).await?;
                 conn_state.quit.store(1, Ordering::SeqCst);
                 Ok(())
             }
@@ -269,6 +270,7 @@ impl MainState {
                     Some(Err(e)) => return Err(Box::new(e)),
                     // if end of stream
                     None => {
+                        conn_state.user_state.quit_reason = "Unexpected eof".to_string();
                         conn_state.quit.store(1, Ordering::SeqCst);
                         return Err(Box::new(
                             io::Error::new(io::ErrorKind::UnexpectedEof, "unexpected eof")))
@@ -478,7 +480,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                 Err(e) => {
                     if e.to_string().contains("unexpected eof") {
                         info!("Conexión cerrada por el cliente: {}", conn_state.user_state.source);
-                        conn_state.user_state.quit_reason = "End of file".to_string();
+                        conn_state.user_state.quit_reason = "Unexpected eof".to_string();
                     } else {
                         error!("Error para {}: {}", conn_state.user_state.source, e);
                     }
@@ -516,7 +518,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                         if let Some(user) = state.users.get(&nickname) {
                             let _ = user.send_msg_display(
                                 &conn_state.user_state.source,
-                                format!("QUIT :UserQuit ({})", conn_state.user_state.quit_reason),
+                                format!("QUIT :{}", conn_state.user_state.quit_reason),
                             );
                         }
                     }
@@ -781,7 +783,7 @@ pub(crate) async fn run_server(
                                 };
                             }
                             Ok(msg) = &mut quit_receiver => {
-                                info!("Server quit: {}", msg);
+                                info!("Server Quit: {}", msg);
                                 do_quit = true;
                             }
                         };

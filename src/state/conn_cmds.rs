@@ -131,7 +131,7 @@ static SUPPORT_TOKEN_STRING_VALUE: [SupportTokenStringValue; 9] = [
     },
     SupportTokenStringValue {
         name: "USERMODES",
-        value: "Oiorw",
+        value: "OiorwWz",
     },
 ];
 
@@ -646,7 +646,7 @@ impl super::MainState {
                         if let Some(other_user) = state.users.get(other_nick) {
                             let _ = other_user.send_msg_display(
                                 &conn_state.user_state.source,
-                                format!("QUIT :Server Quit ({})", conn_state.user_state.quit_reason),
+                                format!("QUIT :{}", conn_state.user_state.quit_reason),
                             );
                         }
                     }
