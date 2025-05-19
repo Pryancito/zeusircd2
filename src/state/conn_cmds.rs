@@ -631,47 +631,33 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
     ) -> Result<(), Box<dyn Error>> {
-        // Obtener el nick del usuario que se va
-        if let Some(nick) = &conn_state.user_state.nick {
-            // Primero obtenemos una copia de los canales del usuario
-            let user_channels = {
-                let state = self.state.read().await;
-                if let Some(user) = state.users.get(nick) {
-                    user.channels.clone()
-                } else {
-                    return Ok(());
-                }
-            };
-
-            // Notificar a todos los usuarios en los canales compartidos
-            for channel in &user_channels {
-                let channel_users = {
-                    let state = self.state.read().await;
-                    if let Some(chanobj) = state.channels.get(&channel.to_string()) {
-                        chanobj.users.keys().cloned().collect::<Vec<_>>()
-                    } else {
-                        continue;
-                    }
-                };
-
-                for nickname in channel_users {
-                    if nickname != nick.as_str() {
-                        let state = self.state.read().await;
-                        if let Some(user) = state.users.get(&nickname) {
-                            let _ = user.send_msg_display(
+        let nick = conn_state.user_state.nick.as_ref().unwrap();
+        let user_channels = {
+            let state = self.state.read().await;
+            state.users.get(nick).unwrap().channels.clone()
+        };
+        conn_state.user_state.quit_reason = "Client Quit".to_string();
+        // notify other users in channels
+        for chname in &user_channels {
+            let state = self.state.read().await;
+            if let Some(channel) = state.channels.get(chname) {
+                for (other_nick, _) in &channel.users {
+                    if other_nick != nick {
+                        if let Some(other_user) = state.users.get(other_nick) {
+                            let _ = other_user.send_msg_display(
                                 &conn_state.user_state.source,
-                                "QUIT :Client Quit",
+                                format!("QUIT :Server Quit ({})", conn_state.user_state.quit_reason),
                             );
                         }
                     }
                 }
             }
-
-            // Remover al usuario del estado
+        }
+        // remove user from state
+        {
             let mut state = self.state.write().await;
             state.remove_user(nick);
         }
-
         Ok(())
     }
 }

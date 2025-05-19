@@ -24,7 +24,7 @@ use futures::FutureExt;
 use lazy_static::lazy_static;
 #[cfg(feature = "tls_openssl")]
 use openssl::ssl::{Ssl, SslAcceptor, SslFiletype, SslMethod};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
@@ -446,7 +446,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
         if main_state.config.dns_lookup {
             let _ = main_state.feed_msg(
                 &mut conn_state.stream,
-                "*** Looking hostname.",
+                "NOTICE IP_LOOKUP :*** Looking up hostname.",
             )
             .await;
             conn_state.run_dns_lookup();
@@ -478,6 +478,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                 Err(e) => {
                     if e.to_string().contains("unexpected eof") {
                         info!("Conexión cerrada por el cliente: {}", conn_state.user_state.source);
+                        conn_state.user_state.quit_reason = "End of file".to_string();
                     } else {
                         error!("Error para {}: {}", conn_state.user_state.source, e);
                     }
@@ -486,10 +487,46 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
             }
         }
 
+        // Obtener el nick del usuario que se va
+        if let Some(nick) = &conn_state.user_state.nick {
+            // Primero obtenemos una copia de los canales del usuario
+            let user_channels = {
+                let state = main_state.state.read().await;
+                if let Some(user) = state.users.get(nick) {
+                    user.channels.clone()
+                } else {
+                    HashSet::new()
+                }
+            };
+
+            // Notificar a todos los usuarios en los canales compartidos
+            for channel in &user_channels {
+                let channel_users = {
+                    let state = main_state.state.read().await;
+                    if let Some(chanobj) = state.channels.get(&channel.to_string()) {
+                        chanobj.users.keys().cloned().collect::<Vec<_>>()
+                    } else {
+                        continue;
+                    }
+                };
+
+                for nickname in channel_users {
+                    if nickname != nick.as_str() {
+                        let state = main_state.state.read().await;
+                        if let Some(user) = state.users.get(&nickname) {
+                            let _ = user.send_msg_display(
+                                &conn_state.user_state.source,
+                                format!("QUIT :UserQuit ({})", conn_state.user_state.quit_reason),
+                            );
+                        }
+                    }
+                }
+            }
+        }
         // Limpieza de recursos
         info!(
             "User {} gone from server",
-            conn_state.user_state.source
+            conn_state.user_state.source,
         );
         main_state.remove_user(&conn_state).await;
     }

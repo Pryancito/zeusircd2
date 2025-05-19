@@ -41,8 +41,7 @@ use crate::utils::*;
 pub(super) struct User {
     pub(super) hostname: String,
     pub(super) sender: UnboundedSender<String>,
-    // quit_sender - used by KILL command.
-    pub(super) quit_sender: Option<oneshot::Sender<(String, String)>>,
+    //pub(super) quit_sender: Option<oneshot::Sender<(String, String)>>,
     pub(super) name: String,
     pub(super) realname: String,
     pub(super) source: String, // IRC source for mask matching
@@ -60,7 +59,7 @@ impl User {
         config: &MainConfig,
         user_state: &ConnUserState,
         sender: UnboundedSender<String>,
-        quit_sender: oneshot::Sender<(String, String)>,
+        _quit_sender: oneshot::Sender<(String, String)>,
     ) -> User {
         let mut user_modes = config.default_user_modes;
         user_modes.registered = user_modes.registered || user_state.registered;
@@ -71,7 +70,6 @@ impl User {
         User {
             hostname: user_state.hostname.clone(),
             sender,
-            quit_sender: Some(quit_sender),
             name: user_state.name.as_ref().unwrap().clone(),
             realname: user_state.realname.as_ref().unwrap().clone(),
             source: user_state.source.clone(),
@@ -496,6 +494,7 @@ pub(crate) struct ConnUserState {
     pub(super) password: Option<String>,
     pub(super) authenticated: bool,
     pub(super) registered: bool,
+    pub(super) quit_reason: String,
 }
 
 impl ConnUserState {
@@ -512,6 +511,7 @@ impl ConnUserState {
             password: None,
             authenticated: false,
             registered: false,
+            quit_reason: String::new(),
         }
     }
 
@@ -681,7 +681,9 @@ async fn ping_client_waker(d: Duration, quit: Arc<AtomicI32>, sender: UnboundedS
     let mut intv = time::interval(d);
     while quit.load(Ordering::SeqCst) == 0 {
         intv.tick().await;
-        sender.send(()).unwrap();
+        if quit.load(Ordering::SeqCst) == 0 {
+            sender.send(()).unwrap();
+        }
     }
 }
 
@@ -835,6 +837,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1407,7 +1410,8 @@ mod test {
                 source: "@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1423,7 +1427,8 @@ mod test {
                 source: "~boro@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1439,7 +1444,8 @@ mod test {
                 source: "buru!~boro@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1456,7 +1462,8 @@ mod test {
                 source: "@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1472,7 +1479,8 @@ mod test {
                 source: "boro!@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1488,7 +1496,8 @@ mod test {
                 source: "boro!~buru@192.168.1.7".to_string(),
                 password: None,
                 authenticated: false,
-                registered: false
+                registered: false,
+                quit_reason: String::new(),
             },
             cus
         );
@@ -1578,6 +1587,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1644,6 +1654,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1661,6 +1672,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1678,6 +1690,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1697,6 +1710,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1717,6 +1731,7 @@ mod test {
             password: None,
             authenticated: true,
             registered: true,
+            quit_reason: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();

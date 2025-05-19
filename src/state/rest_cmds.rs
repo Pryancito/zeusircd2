@@ -57,14 +57,10 @@ impl super::MainState {
                                 true
                             } else {
                                 if !notice {
-                                    self.feed_msg(
-                                        &mut conn_state.stream,
-                                        ErrCannotSendToChain404 {
-                                            client,
-                                            channel: chan_str,
-                                        },
-                                    )
-                                    .await?;
+                                    let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
+                                        client,
+                                        channel: chan_str,
+                                    }));
                                 }
                                 false
                             }
@@ -75,14 +71,10 @@ impl super::MainState {
                                 true
                             } else {
                                 if !notice {
-                                    self.feed_msg(
-                                        &mut conn_state.stream,
-                                        ErrCannotSendToChain404 {
-                                            client,
-                                            channel: chan_str,
-                                        },
-                                    )
-                                    .await?;
+                                    let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
+                                        client,
+                                        channel: chan_str,
+                                    }));
                                 }
                                 false
                             }
@@ -95,14 +87,10 @@ impl super::MainState {
                                 true
                             } else {
                                 if !notice {
-                                    self.feed_msg(
-                                        &mut conn_state.stream,
-                                        ErrCannotSendToChain404 {
-                                            client,
-                                            channel: chan_str,
-                                        },
-                                    )
-                                    .await?;
+                                    let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
+                                        client,
+                                        channel: chan_str,
+                                    }));
                                 }
                                 false
                             }
@@ -198,14 +186,10 @@ impl super::MainState {
                             something_done = true;
                         }
                     } else if !notice {
-                        self.feed_msg(
-                            &mut conn_state.stream,
-                            ErrNoSuchChannel403 {
-                                client,
-                                channel: chan_str,
-                            },
-                        )
-                        .await?;
+                        let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchChannel403 {
+                            client,
+                            channel: chan_str,
+                        }));
                     }
                 } else {
                     // to user
@@ -214,27 +198,19 @@ impl super::MainState {
                         if !notice {
                             // if user away
                             if let Some(ref away) = cur_user.away {
-                                self.feed_msg(
-                                    &mut conn_state.stream,
-                                    RplAway301 {
-                                        client,
-                                        nick: target,
-                                        message: away,
-                                    },
-                                )
-                                .await?;
+                                let _ = conn_state.stream.feed(format!(":{} {}", user_nick, RplAway301 {
+                                    client,
+                                    nick: target,
+                                    message: away,
+                                }));
                             }
                         }
                         something_done = true;
                     } else if !notice {
-                        self.feed_msg(
-                            &mut conn_state.stream,
-                            ErrNoSuchNick401 {
-                                client,
-                                nick: target,
-                            },
-                        )
-                        .await?;
+                        let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchNick401 {
+                            client,
+                            nick: target,
+                        }));
                     }
                 }
             }
@@ -651,32 +627,37 @@ impl super::MainState {
         nickname: &'a str,
         comment: &'a str,
     ) -> Result<(), Box<dyn Error>> {
-        let client = conn_state.user_state.client_name();
-        let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
-
-        if user.modes.oper {
-            // only operator can kill user
-            if let Some(user_to_kill) = state.users.get_mut(nickname) {
-                if let Some(sender) = user_to_kill.quit_sender.take() {
-                    sender
-                        .send((user_nick.to_string(), comment.to_string()))
-                        .map_err(|_| "error".to_string())?;
+        let state = self.state.read().await;
+        if let Some(user) = state.users.get(user_nick) {
+            if user.modes.is_local_oper() {
+                if let Some(user_to_kill) = state.users.get(nickname) {
+                    conn_state.user_state.quit_reason = format!("Killed by {}: {}", user_nick, comment);
+                    // notify other users in channels
+                    for chname in &user_to_kill.channels {
+                        if let Some(channel) = state.channels.get(chname) {
+                            for (other_nick, _) in &channel.users {
+                                if other_nick != nickname {
+                                    if let Some(other_user) = state.users.get(other_nick) {
+                                        let _ = other_user.send_msg_display(
+                                            &conn_state.user_state.source,
+                                            format!("QUIT :Server Quit ({})", conn_state.user_state.quit_reason),
+                                        );
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    // remove user from state
+                    drop(state);
+                    let mut state = self.state.write().await;
+                    state.remove_user(nickname);
+                } else {
+                    let _ = conn_state.stream.feed(format!(":{} {} :No such nick/channel", user_nick, nickname));
                 }
             } else {
-                self.feed_msg(
-                    &mut conn_state.stream,
-                    ErrNoSuchNick401 {
-                        client,
-                        nick: nickname,
-                    },
-                )
-                .await?;
+                let _ = conn_state.stream.feed(format!(":{} :Permission Denied- You're not an IRC operator", user_nick));
             }
-        } else {
-            self.feed_msg(&mut conn_state.stream, ErrNoPrivileges481 { client })
-                .await?;
         }
         Ok(())
     }
@@ -746,27 +727,27 @@ impl super::MainState {
         conn_state: &mut ConnState,
         message_opt: Option<&'a str>,
     ) -> Result<(), Box<dyn Error>> {
-        let client = conn_state.user_state.client_name();
-        let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
-        let message = message_opt.unwrap_or("Quitting from DIE");
-
-        // only operator can kill server
-        if user.modes.oper {
-            for u in state.users.values_mut() {
-                if let Some(sender) = u.quit_sender.take() {
-                    sender
-                        .send((user_nick.to_string(), message.to_string()))
-                        .map_err(|_| "error".to_string())?;
+        let state = self.state.read().await;
+        if let Some(user) = state.users.get(user_nick) {
+            if user.modes.is_local_oper() {
+                let message = message_opt.unwrap_or("Server shutdown");
+                // notify all users
+                for (nick, u) in &state.users {
+                    if nick != user_nick {
+                        let _ = u.send_msg_display(
+                            &self.config.name,
+                            format!("QUIT :Server shutdown: {}", message),
+                        );
+                    }
                 }
+                // notify quit sender
+                let _ = conn_state.stream.feed(format!(":{} Server shutdown: {}", user_nick, message));
+                // set quit reason for all users
+                conn_state.user_state.quit_reason = format!("Server shutdown: {}", message);
+            } else {
+                let _ = conn_state.stream.feed(format!(":{} :Permission Denied- You're not an IRC operator", user_nick));
             }
-            if let Some(sender) = state.quit_sender.take() {
-                sender.send(message.to_string())?;
-            }
-        } else {
-            self.feed_msg(&mut conn_state.stream, ErrCantKillServer483 { client })
-                .await?;
         }
         Ok(())
     }
