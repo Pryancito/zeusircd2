@@ -371,8 +371,12 @@ impl super::MainState {
                 if nickmask.contains('*') || nickmask.contains('?') {
                     // wildcard
                     real_nickmasks.push(nickmask);
-                } else if state.users.contains_key(&nickmask.to_string()) {
-                    nicks.insert(nickmask.to_string());
+                } else {
+                    // Buscar el nick ignorando mayúsculas/minúsculas
+                    let found_nick = state.users.keys().find(|&k| k.eq_ignore_ascii_case(nickmask));
+                    if let Some(nick) = found_nick {
+                        nicks.insert(nick.to_string());
+                    }
                 }
             });
 
