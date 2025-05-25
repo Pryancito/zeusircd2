@@ -863,6 +863,13 @@ impl super::MainState {
         Ok(())
     }
 }
+struct MyLinesCodecError(pub LinesCodecError);
+
+impl From<MyLinesCodecError> for String {
+    fn from(error: MyLinesCodecError) -> String {
+        error.0.to_string()
+    }
+}
 
 #[cfg(test)]
 mod test {
@@ -2910,3 +2917,4 @@ mod test {
         quit_test_server(main_state, handle).await;
     }
 }
+

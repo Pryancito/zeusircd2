@@ -35,7 +35,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{oneshot, RwLock};
+use tokio::sync::{oneshot, RwLock, Mutex};
 use tokio::task::JoinHandle;
 #[cfg(feature = "tls_openssl")]
 use tokio_openssl::SslStream;
@@ -54,6 +54,7 @@ use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
+use crate::state::server_communication::ServerCommunication;
 
 use Reply::*;
 
@@ -71,10 +72,12 @@ pub(crate) struct MainState {
     created: String,
     created_time: DateTime<Local>,
     command_counts: [AtomicU64; NUM_COMMANDS],
+    #[allow(dead_code)]
+    server_communication: Arc<Mutex<ServerCommunication>>,
 }
 
 impl MainState {
-    pub(crate) fn new_from_config(config: MainConfig) -> MainState {
+    pub(crate) async fn new_from_config(config: MainConfig) -> Result<MainState, String> {
         // create indexes for configured users and operators.
         let mut user_config_idxs = HashMap::new();
         if let Some(ref users) = config.users {
@@ -90,8 +93,8 @@ impl MainState {
         }
         let state = RwLock::new(VolatileState::new_from_config(&config));
         let now = Local::now();
-        MainState {
-            config,
+        Ok(MainState {
+            config: config.clone(),
             user_config_idxs,
             oper_config_idxs,
             state,
@@ -141,7 +144,12 @@ impl MainState {
                 AtomicU64::new(0),
                 AtomicU64::new(0),
             ],
-        }
+            server_communication: Arc::new(Mutex::new(ServerCommunication::new(
+                &config.amqp.url,
+                &config.amqp.exchange,
+                &config.amqp.queue,
+            ).await.map_err(|e| e.to_string())?)),
+        })
     }
 
     fn count_command(&self, cmd: &Command) {
@@ -415,6 +423,8 @@ impl MainState {
                         self.process_ison(conn_state, nicknames).await,
                     DIE{ message } =>
                         self.process_die(conn_state, message).await,
+                    SERVERS{ target } => 
+                        self.process_servers(conn_state, target.as_deref()).await,
                 }
             },
         }
@@ -437,6 +447,50 @@ impl MainState {
         t: T,
     ) -> Result<(), LinesCodecError> {
         stream.feed(format!(":{} {}", source, t)).await
+    }
+
+    async fn process_servers<'a>(
+        &self,
+        conn_state: &mut ConnState,
+        _target: Option<&'a str>,
+    ) -> Result<(), Box<dyn Error>> {
+        // Verificar si el usuario tiene privilegios de operador
+        let state = self.state.read().await;
+        let user = state.users.get(conn_state.user_state.nick.as_ref().unwrap()).unwrap();
+        if !user.modes.is_local_oper() {
+            self.feed_msg(&mut conn_state.stream, 
+                ErrNoPrivileges481{ client: conn_state.user_state.client_name() }).await?;
+            return Ok(());
+        }
+
+        // Obtener la lista de servidores
+        
+        // Enviar información de cada servidor
+        for (server_name, link) in &state.server_links {
+            self.feed_msg(&mut conn_state.stream, 
+                format!(":{} 364 {} {} {} :{}", 
+                    self.config.name,
+                    conn_state.user_state.nick.as_ref().unwrap(),
+                    server_name,
+                    link.hop_count,
+                    link.description)).await?;
+        }
+        
+        // Enviar el final de la lista
+        self.feed_msg(&mut conn_state.stream, 
+            format!(":{} 365 {} :End of /SERVERS list", 
+                self.config.name,
+                conn_state.user_state.nick.as_ref().unwrap())).await?;
+
+        Ok(())
+    }
+    #[allow(dead_code)]
+    async fn send_reply<T: fmt::Display>(
+        &self,
+        stream: &mut BufferedLineStream,
+        reply: T,
+    ) -> Result<(), String> {
+        self.feed_msg(stream, reply).await.map_err(|e| e.to_string())
     }
 }
 
@@ -738,7 +792,7 @@ pub(crate) async fn run_server(
         initialize_dns_resolver();
     }
 
-    let main_state = Arc::new(MainState::new_from_config(config.clone()));
+    let main_state = Arc::new(MainState::new_from_config(config.clone()).await?);
     let main_state_to_return = main_state.clone();
 
     let mut handles = Vec::new();
@@ -1510,3 +1564,5 @@ mod channel_cmds;
 mod conn_cmds;
 mod rest_cmds;
 mod srv_query_cmds;
+
+pub mod server_communication;

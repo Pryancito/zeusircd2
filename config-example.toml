@@ -139,3 +139,30 @@ secret = false
 protected_topic = false
 # If true then nobody outside channel can send message to channel.
 no_external_messages = true
+
+# Configuración de servidores AMQP
+[amqp]
+# URL del servidor AMQP
+url = "amqp://localhost:5672"
+# Nombre del exchange para mensajes entre servidores
+exchange = "irc_servers"
+# Cola para este servidor
+queue = "server_1"
+# Credenciales opcionales
+username = ""
+password = ""
+
+# Lista de servidores conectados
+[[servers]]
+name = "server1.localhost"
+description = "Server 1 node"
+host = "127.0.0.1"
+port = 4000
+password = "blabla"
+
+[[servers]]
+name = "server2.localhost"
+description = "Server 2 node"
+host = "127.0.0.1"
+port = 4001
+password = "blabla"

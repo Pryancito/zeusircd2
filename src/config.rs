@@ -342,6 +342,23 @@ pub(crate) struct MainConfig {
     pub(crate) users: Option<Vec<UserConfig>>,
     #[validate]
     pub(crate) channels: Option<Vec<ChannelConfig>>,
+    pub amqp: AmqpConfig,
+    pub servers: Vec<ServerConfig>,
+}
+
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
+pub struct AmqpConfig {
+    pub url: String,
+    pub exchange: String,
+    pub queue: String,
+}
+
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
+pub struct ServerConfig {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub description: String,
 }
 
 struct TracingLevelVisitor;
@@ -464,6 +481,17 @@ impl Default for MainConfig {
             database: None,
             log_file: None,
             log_level: tracing::Level::INFO,
+            amqp: AmqpConfig {
+                url: "amqp://guest:guest@localhost:5672/%2f".to_string(),
+                exchange: "irc_exchange".to_string(),
+                queue: "irc_queue".to_string(),
+            },
+            servers: vec![ServerConfig {
+                name: "irc.irc".to_string(),
+                host: "127.0.0.1".to_string(),
+                port: 6667,
+                description: "Default server".to_string(),
+            }],
         }
     }
 }

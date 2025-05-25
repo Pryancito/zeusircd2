@@ -378,6 +378,7 @@ pub(crate) enum Command<'a> {
     DIE {
         message: Option<&'a str>,
     },
+    SERVERS { target: Option<String> },
 }
 
 use Command::*;
@@ -428,6 +429,7 @@ impl<'a> Command<'a> {
             WALLOPS { .. } => 38,
             ISON { .. } => 39,
             DIE { .. } => 40,
+            SERVERS { .. } => 41,
         }
     }
 
@@ -867,6 +869,10 @@ impl<'a> Command<'a> {
                 } else {
                     Ok(DIE { message: None })
                 }
+            }
+            "SERVERS" => {
+                let target = message.params.get(0).map(|s| s.to_string());
+                Ok(Command::SERVERS { target })
             }
             s => Err(UnknownCommand(s.to_string())),
         }
@@ -3211,6 +3217,16 @@ mod test {
             Command::from_message(&Message {
                 source: None,
                 command: "reStaRt",
+                params: vec![]
+            })
+            .map_err(|e| e.to_string())
+        );
+
+        assert_eq!(
+            Ok(SERVERS { target: None }),
+            Command::from_message(&Message {
+                source: None,
+                command: "SERVERS",
                 params: vec![]
             })
             .map_err(|e| e.to_string())
