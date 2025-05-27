@@ -383,7 +383,7 @@ pub(crate) enum Command<'a> {
 
 use Command::*;
 
-pub(crate) const NUM_COMMANDS: usize = 41;
+pub(crate) const NUM_COMMANDS: usize = 42;
 
 impl<'a> Command<'a> {
     pub(crate) fn index(&self) -> usize {

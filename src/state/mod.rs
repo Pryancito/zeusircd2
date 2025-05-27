@@ -143,6 +143,7 @@ impl MainState {
                 AtomicU64::new(0),
                 AtomicU64::new(0),
                 AtomicU64::new(0),
+                AtomicU64::new(0),
             ],
             server_communication: Arc::new(Mutex::new(ServerCommunication::new(
                 &config.amqp.url,

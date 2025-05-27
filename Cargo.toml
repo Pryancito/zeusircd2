@@ -41,10 +41,11 @@ mysql_async = { version = "0.35.1", optional = true }
 tokio-tungstenite = "0.20"
 tungstenite = "0.20"
 url = "2.4"
-lapin = "2.5.3"
+lapin = "2.3"
 amq-protocol = "7.1"
 amq-protocol-types = "7.1"
 serde_json = "1.0"
+anyhow = "1.0"
 
 [features]
 default = []

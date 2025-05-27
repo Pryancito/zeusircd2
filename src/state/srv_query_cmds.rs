@@ -155,21 +155,80 @@ impl super::MainState {
     pub(super) async fn process_connect<'a>(
         &self,
         conn_state: &mut ConnState,
-        _: &'a str,
-        _: Option<u16>,
-        _: Option<&'a str>,
+        target_server: &'a str,
+        port: Option<u16>,
+        _remote_server: Option<&'a str>,
     ) -> Result<(), Box<dyn Error>> {
+        // Verificar si el usuario es operador
+        let state = self.state.read().await;
+        let user = state.users.get(conn_state.user_state.nick.as_ref().unwrap()).unwrap();
+        if !user.modes.is_local_oper() {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                ErrNoPrivileges481 { client },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        // Obtener el puerto por defecto si no se especifica
+        let port = port.unwrap_or(6667);
+
+        // Intentar conectar al servidor objetivo
         let client = conn_state.user_state.client_name();
-        self.feed_msg(
-            &mut conn_state.stream,
-            ErrUnknownError400 {
-                client,
-                command: "CONNECT",
-                subcommand: None,
-                info: "Server unsupported",
-            },
-        )
-        .await?;
+        
+        // Intentar conectar al servidor
+        let result = self.server_communication.lock().await.connect_server(target_server, port).await.map_err(|e| e.to_string());
+        
+        // Enviar mensaje apropiado según el resultado
+        let message = match &result {
+            Ok(_) => format!(":{} NOTICE {} :Successfully connected from server {}", 
+                self.config.name, client, target_server),
+            Err(e) => format!(":{} NOTICE {} :Failed to connect from server {}: {}", 
+                self.config.name, client, target_server, e)
+        };
+
+        self.feed_msg(&mut conn_state.stream, message).await?;
+
+        Ok(())
+    }
+
+    pub(super) async fn process_squit<'a>(
+        &self,
+        conn_state: &mut ConnState,
+        server: &'a str,
+        _comment: &'a str,
+    ) -> Result<(), Box<dyn Error>> {
+        // Verificar si el usuario es operador
+        let state = self.state.read().await;
+        let user = state.users.get(conn_state.user_state.nick.as_ref().unwrap()).unwrap();
+        if !user.modes.is_local_oper() {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                ErrNoPrivileges481 { client },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        // Intentar desconectar el servidor
+        let client = conn_state.user_state.client_name();
+        
+        // Intentar desconectar el servidor
+        let result = self.server_communication.lock().await.disconnect_server(server).await.map_err(|e| e.to_string());
+        
+        // Enviar mensaje apropiado según el resultado
+        let message = match &result {
+            Ok(_) => format!(":{} NOTICE {} :Successfully disconnected from server {}", 
+                self.config.name, client, server),
+            Err(e) => format!(":{} NOTICE {} :Failed to disconnect from server {}: {}", 
+                self.config.name, client, server, e)
+        };
+        
+        self.feed_msg(&mut conn_state.stream, message).await?;
+
         Ok(())
     }
 

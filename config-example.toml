@@ -68,7 +68,7 @@ oper = false
 # Local operator mode.
 local_oper = false
 # Registered mode.
-registered = false
+registered = true
 # Wallops mode.
 wallops = false
 # Websocket mode.
@@ -77,15 +77,15 @@ websocket = false
 secure = false
 
 # Optional. List of operators
-#[[operators]]
+[[operators]]
 # Name of operator. It should be used in OPER as the first parameter.
-#name = "matszpk"
+name = "Moebius"
 # Required password to authenticate an operator. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-#password = "xVfVq4pvFosvOQb0IVaPMkK22u0ZF2Ki7XB9yRsGbnEbL6WXhQCdpOwDV62HZ0MS5RjqmfrQJT7lV3aohUa3uw"
+password = "9Il8yR34wEWF1/C3Y9qi4zlUtm2ME6gyoPkhXFR1LardAoTMZKCseXCWCEv8R46+V7Sjkl7O8iqojO+QqWzI1A"
 # Optional. Source mask of source that will be checked for user source.
 # Source is combination of the nick, name and host.
-#mask = "*!*@localhost"
+mask = "*!*@localhost"
 
 # Optional. List of registered users.
 #[[users]]
@@ -95,10 +95,10 @@ secure = false
 #nick = "Moebius"
 # Required password to authenticate an user. It should be password hash
 # by using server binary: './simple-irc-server -g [-P password]'.
-#password = "29OY9ZTL9FzBWe3rhLS+yEw6L6S5gj5ViGB/Vs8jcpPNiX57oV13xP68osOiX7Bd7ERqtFVsDEY27GsZ3cqulg"
+#password = "9Il8yR34wEWF1/C3Y9qi4zlUtm2ME6gyoPkhXFR1LardAoTMZKCseXCWCEv8R46+V7Sjkl7O8iqojO+QqWzI1A"
 # Optional. Source mask of source that will be checked for user source.
 # Source is combination of the nick, name and host.
-#mask = "*!*@127.0.0.1"
+#mask = "*!*@localhost"
 
 # Optional. List of preconfigured channels.
 [[channels]]
@@ -145,24 +145,24 @@ no_external_messages = true
 # URL del servidor AMQP
 url = "amqp://localhost:5672"
 # Nombre del exchange para mensajes entre servidores
-exchange = "irc_servers"
+exchange = "ZeusiRCd"
 # Cola para este servidor
-queue = "server_1"
+queue = "leaf"
 # Credenciales opcionales
 username = ""
 password = ""
 
 # Lista de servidores conectados
 [[servers]]
-name = "server1.localhost"
-description = "Server 1 node"
+name = "leaf.localhost"
+description = "Server LEAF"
 host = "127.0.0.1"
 port = 4000
 password = "blabla"
 
-[[servers]]
-name = "server2.localhost"
-description = "Server 2 node"
-host = "127.0.0.1"
-port = 4001
-password = "blabla"
+#[[servers]]
+#name = "server2.localhost"
+#description = "Server 2 node"
+#host = "127.0.0.1"
+#port = 4001
+#password = "blabla"

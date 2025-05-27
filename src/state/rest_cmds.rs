@@ -702,30 +702,6 @@ impl super::MainState {
         Ok(())
     }
 
-    pub(super) async fn process_squit<'a>(
-        &self,
-        conn_state: &mut ConnState,
-        server: &'a str,
-        comment: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
-        let client = conn_state.user_state.client_name();
-        if self.config.name != server {
-            self.feed_msg(
-                &mut conn_state.stream,
-                ErrUnknownError400 {
-                    client,
-                    command: "SQUIT",
-                    subcommand: None,
-                    info: "Server unsupported",
-                },
-            )
-            .await?;
-        } else {
-            self.process_die(conn_state, Some(comment)).await?;
-        }
-        Ok(())
-    }
-
     pub(super) async fn process_die<'a>(
         &self,
         conn_state: &mut ConnState,
@@ -2525,31 +2501,6 @@ mod test {
     }
 
     #[tokio::test]
-    async fn test_command_squit() {
-        let mut config = MainConfig::default();
-        config.operators = Some(vec![OperatorConfig {
-            name: "fanny".to_string(),
-            password: argon2_hash_password("Funny"),
-            mask: None,
-        }]);
-        let (_, _, port) = run_test_server(config).await;
-
-        {
-            let mut line_stream =
-                login_to_test_and_skip(port, "fanny", "fanny", "Fanny BumBumBum").await;
-            line_stream
-                .send("OPER fanny Funny".to_string())
-                .await
-                .unwrap();
-            line_stream.next().await.unwrap().unwrap();
-            line_stream
-                .send("SQUIT irc.irc :Blabla".to_string())
-                .await
-                .unwrap();
-        }
-    }
-
-    #[tokio::test]
     async fn test_command_die() {
         let mut config = MainConfig::default();
         config.operators = Some(vec![OperatorConfig {
@@ -2591,26 +2542,6 @@ mod test {
             line_stream.next().await.unwrap().unwrap();
             line_stream.send("DIE".to_string()).await.unwrap();
         }
-    }
-
-    #[tokio::test]
-    async fn test_command_squit_no_privileges() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream =
-                login_to_test_and_skip(port, "fanny", "fanny", "Fanny BumBumBum").await;
-            line_stream
-                .send("SQUIT irc.irc :Blabla".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":irc.irc 483 fanny :You cant kill a server!".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
     }
 
     #[tokio::test]
