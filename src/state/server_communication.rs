@@ -10,8 +10,9 @@ use std::result::Result;
 use futures::StreamExt;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use crate::state::*;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub enum ServerMessage {
     Connect {
         server_name: String,
@@ -35,6 +36,14 @@ pub enum ServerMessage {
     ServerUnlink {
         server_name: String,
     },
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Message {
+    server: String,
+    user: String,
+    command: String,
+    text: String,
 }
 
 #[derive(Clone)]
@@ -91,11 +100,10 @@ impl ServerCommunication {
         let server_comm_clone = server_comm.clone();
         tokio::spawn(async move {
             if let Err(e) = server_comm_clone.consume_messages(|message| {
-                // Aquí procesas cada mensaje recibido desde AMQP
                 println!("Mensaje AMQP recibido: {:?}", message);
                 Ok(())
             }).await {
-                eprintln!("Error en el consumidor AMQP: {:?}", e);
+                error!("Error en el consumidor AMQP: {:?}", e);
             }
         });
 
@@ -194,7 +202,7 @@ impl ServerCommunication {
         Ok(())
     }
 
-    pub async fn consume_messages<F>(&self, callback: F) -> Result<(), Box<dyn Error>>
+    pub async fn consume_messages<F>(&self, callback: F) -> Result<(), Box<dyn Error + Send + Sync>>
     where
         F: Fn(ServerMessage) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
     {
@@ -221,8 +229,14 @@ impl ServerCommunication {
                     // Deserializar el mensaje
                     if let Ok(message) = serde_json::from_slice::<ServerMessage>(&delivery.data) {
                         // Ejecutar el callback con el mensaje
-                        if let Err(e) = callback(message) {
-                            eprintln!("Error procesando mensaje: {:?}", e);
+                        match callback(message.clone()).map_err(|e| e.to_string()) {
+                            Ok(_) => {
+                                let msg = format!("{:?}", message);
+                                self.server_message(msg).await;
+                            },
+                            Err(e) => {
+                                error!("Error procesando mensaje: {:?}", e);
+                            }
                         }
                     }
 
@@ -232,11 +246,55 @@ impl ServerCommunication {
                         .await;
                 }
                 Err(e) => {
-                    eprintln!("Error recibiendo mensaje de AMQP: {:?}", e);
+                    error!("Error recibiendo mensaje de AMQP: {:?}", e);
                 }
             }
         }
 
         Ok(())
+    }
+
+    async fn server_message(&self, message: String) {
+        let result = self.parse_server_message(message).unwrap();
+        println!("Mensaje recibido de: {}", result.server);
+    }
+
+    fn parse_server_message(&self, message: String) -> Result<Message, Box<dyn Error>> {
+        let message = message.trim();
+        
+        // Verificar que el mensaje comienza con ':'
+        if !message.starts_with(':') {
+            return Err("Mensaje inválido: debe comenzar con ':'".into());
+        }
+
+        // Extraer el servidor
+        let server_end = message.find(' ').ok_or("Formato de mensaje inválido")?;
+        let server = message[1..server_end].to_string();
+        
+        // Extraer el resto del mensaje
+        let remaining = message[server_end + 1..].trim();
+        
+        // Extraer nick!id@host
+        let user_end = remaining.find(' ').ok_or("Formato de mensaje inválido")?;
+        let user = remaining[..user_end].to_string();
+        
+        // Extraer el comando y el texto
+        let command_text = remaining[user_end + 1..].trim();
+        let command_end = command_text.find(':').unwrap_or(command_text.len());
+        let command = command_text[..command_end].trim().to_string();
+        
+        // Extraer el texto (si existe)
+        let text = if command_end < command_text.len() {
+            command_text[command_end + 1..].trim().to_string()
+        } else {
+            String::new()
+        };
+
+        Ok(Message {
+            server,
+            user,
+            command,
+            text
+        })
     }
 } 
