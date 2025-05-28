@@ -219,6 +219,8 @@ impl super::MainState {
         // Intentar desconectar el servidor
         let result = self.server_communication.lock().await.disconnect_server(server).await.map_err(|e| e.to_string());
         
+
+        
         // Enviar mensaje apropiado según el resultado
         let message = match &result {
             Ok(_) => format!(":{} NOTICE {} :Successfully disconnected from server {}", 
