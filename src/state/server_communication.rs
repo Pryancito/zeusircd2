@@ -233,57 +233,63 @@ impl ServerCommunication {
             return Err("Not connected server.".into());
         }
 
-        if let Some(main_state) = self.get_main_state() {
-            let state = main_state.lock().await;
-            println!("Procesando mensaje: {}", result.get_text());
-            // Procesar comandos de manera más estructurada
-            match result.get_command() {
-                "PRIVMSG"|"NOTICE" => {
-                    let parts: Vec<&str> = result.get_text().splitn(2, ':').collect();
-                    if parts.len() == 2 {
-                        let targets: Vec<&str> = parts[0].split_whitespace().collect();
-                        let text = parts[1];
-                        
-                        // Obtener el canal del mensaje
-                        if let Some(channel) = targets.first() {
-                            // Obtener todos los usuarios en el canal
-                            if let Some(channel_users) = state.state.read().await.channels.get(*channel) {
-                                // Enviar el mensaje a cada usuario en el canal
-                                for (nick, _) in &channel_users.users {
-                                    if let Some(user) = state.state.read().await.users.get(nick) {
-                                        let msg = format!(":{} {} {} :{}", 
-                                            result.get_user(),
-                                            result.get_command(),
-                                            channel,
-                                            result.get_text());
-                                        let _ = user.send_msg_display(result.get_server(), msg);
+        let state = match self.get_main_state() {
+            Some(s) => s,
+            None => return Err("No se pudo obtener el estado principal del servidor".into())
+        };
+        println!("Procesando mensaje: {}", result.get_text());
+        // Procesar comandos de manera más estructurada
+        match result.get_command() {
+            "PRIVMSG"|"NOTICE" => {
+                let parts: Vec<&str> = result.get_text().splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    let targets: Vec<&str> = parts[0].split_whitespace().collect();
+                    let text = parts[1];
+                    
+                    // Obtener el canal del mensaje
+                    if let channel = parts[0] {
+                        // Obtener todos los usuarios en el canal
+                        let state_guard = state.lock().await;
+                        let mut state_write = state_guard.state.write().await;
+                        let mut state2 = state_write.clone();
+                        if let Some(channel_comm) = state2.channels.get_mut(channel) {
+                            // Enviar el mensaje a cada usuario en el canal
+                            for (nick, _) in &channel_comm.users {
+                                if nick != result.get_user().split('!').next().unwrap() {
+                                    let msg = format!(":{} {} {} :{}", 
+                                        result.get_user(),
+                                        result.get_command(),
+                                        channel.to_string(),
+                                        result.get_text());
+                                    if let Some(user) = state_write.users.get_mut(nick) {
+                                        let _ = user.send_msg_display(result.get_server(), &msg);
                                     }
                                 }
                             }
                         }
                     }
                 }
-                /*"MODE" => {
-                    let parts: Vec<&str> = result.get_text().split_whitespace().collect();
-                    if parts.len() >= 3 {
-                        let channel = parts[0];
-                        let mode = parts[1];
-                        let mask = parts[2];
-                        
-                        // Procesar modo de ban (+b o -b)
-                        if mode == "+b" || mode == "-b" {
-                            // Obtener todas las conexiones activas
-                            for conn in state.get_connections() {
-                                if let Ok(mut conn_state) = conn.lock() {
-                                    let _ = state.process_mode(&mut conn_state, channel, vec![(mode, vec![mask])]).await;
-                                }
+            }
+            /*"MODE" => {
+                let parts: Vec<&str> = result.get_text().split_whitespace().collect();
+                if parts.len() >= 3 {
+                    let channel = parts[0];
+                    let mode = parts[1];
+                    let mask = parts[2];
+                    
+                    // Procesar modo de ban (+b o -b)
+                    if mode == "+b" || mode == "-b" {
+                        // Obtener todas las conexiones activas
+                        for conn in state.get_connections() {
+                            if let Ok(mut conn_state) = conn.lock() {
+                                let _ = state.process_mode(&mut conn_state, channel, vec![(mode, vec![mask])]).await;
                             }
                         }
                     }
-                }*/
-                _ => {
-                    error!("Server Message error: Comando desconocido {}", result.get_command());
                 }
+            }*/
+            _ => {
+                error!("Server Message error: Comando desconocido {}", result.get_command());
             }
         }
         Ok(())
