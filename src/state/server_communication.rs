@@ -50,7 +50,7 @@ pub struct ServerCommunication {
     server_name: String,
     connected: bool,
     connection: Arc<Mutex<Option<Connection>>>,  // Envolvemos en Arc<Mutex> para permitir Clone
-    channel: Option<String>,                    // Canal actual
+    channel: Option<lapin::Channel>,                    // Canal actual
 }
 
 impl ServerCommunication {
@@ -119,6 +119,7 @@ impl ServerCommunication {
             )
             .await?;
 
+        self.channel = Some(channel);
         info!("Connected to AMQP.");
 
         Ok(())
@@ -143,13 +144,8 @@ impl ServerCommunication {
     pub async fn publish_message(&self, message: &String) -> Result<(), Box<dyn Error>> {
         // Serializar el mensaje a JSON
         let message_bytes = serde_json::to_vec(&message)?;
-        
-        // Crear una nueva conexión y canal para publicar el mensaje
-        let connection = Connection::connect(&self.amqp_url, ConnectionProperties::default()).await?;
-        let channel = connection.create_channel().await?;
-        
         // Publicar el mensaje en el exchange
-        channel
+        self.channel.as_ref().unwrap()
             .basic_publish(
                 &self.exchange,
                 &self.server_name,
@@ -166,12 +162,8 @@ impl ServerCommunication {
     where
         F: Fn(ServerMessage) -> Result<(), Box<dyn Error>> + Send + Sync + 'static,
     {
-        // Crear un canal para consumir mensajes
-        let connection = Connection::connect(&self.amqp_url, ConnectionProperties::default()).await?;
-        let channel = connection.create_channel().await?;
-
         // Configurar el consumidor
-        let mut consumer = channel
+        let mut consumer = self.channel.as_ref().unwrap()
             .basic_consume(
                 &self.queue,
                 "zeusircd2_consumer",
