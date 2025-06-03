@@ -928,6 +928,7 @@ pub(crate) async fn run_server(
         Err(e) => error!("Error al conectar AMQP: {}", e)
     }
 
+    amqp_conn.start_consuming().await.unwrap();
     main_state.serv_comm.lock().await.replace(amqp_conn);
 
     Ok((main_state_to_return, handle))
@@ -956,8 +957,10 @@ mod test {
         //    initialize_logging(&MainConfig::default());
         //});
         let mut config = config;
+        let port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let port = 6667;
         let (main_state, handle) = run_server(config).await.unwrap();
-        (main_state, handle, 6669)
+        (main_state, handle, port)
     }
 
     pub(crate) async fn quit_test_server(main_state: Arc<MainState>, handle: JoinHandle<()>) {

@@ -142,7 +142,7 @@ no_external_messages = true
 # Configuración de servidores AMQP
 [amqp]
 # URL del servidor AMQP
-url = "amqp://localhost:5672"
+url = "amqp://172.17.0.2:5672"
 # Nombre del exchange para mensajes entre servidores
 exchange = "ZeusiRCd"
 # Cola para este servidor
