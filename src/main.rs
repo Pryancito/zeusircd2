@@ -33,6 +33,8 @@ use command::*;
 use config::*;
 use state::*;
 use utils::*;
+use server_communication::*;
+use tracing::{info, error};
 
 #[cfg(feature = "sqlite")]
 use crate::database::sqlite::sqlite_impl::{SQLiteNickDatabase, SQLiteChannelDatabase};
@@ -124,7 +126,6 @@ async fn main() -> Result<(), Box<dyn Error>> {
         let config = MainConfig::new(cli)?;
         let _ = DBState::new(&config).await;
         initialize_logging(&config);
-        // get handle of server
         let (_, handle) = run_server(config).await?;
         // and await for end
         handle.await?;

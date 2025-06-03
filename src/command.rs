@@ -155,7 +155,6 @@ pub(crate) enum CommandId {
     MOTDId = CommandName { name: "MOTD" },
     VERSIONId = CommandName { name: "VERSION" },
     ADMINId = CommandName { name: "ADMIN" },
-    CONNECTId = CommandName { name: "CONNECT" },
     _LUSERSId = CommandName { name: "LUSERS" },
     TIMEId = CommandName { name: "TIME" },
     STATSId = CommandName { name: "STATS" },
@@ -171,7 +170,6 @@ pub(crate) enum CommandId {
     KILLId = CommandName { name: "KILL" },
     _REHASHId = CommandName { name: "REHASH" },
     _RESTARTId = CommandName { name: "RESTART" },
-    SQUITId = CommandName { name: "SQUIT" },
     _AWAYId = CommandName { name: "AWAY" },
     USERHOSTId = CommandName { name: "USERHOST" },
     WALLOPSId = CommandName { name: "WALLOPS" },
@@ -308,11 +306,6 @@ pub(crate) enum Command<'a> {
     ADMIN {
         target: Option<&'a str>,
     },
-    CONNECT {
-        target_server: &'a str,
-        port: Option<u16>,
-        remote_server: Option<&'a str>,
-    },
     LUSERS {},
     TIME {
         server: Option<&'a str>,
@@ -359,10 +352,6 @@ pub(crate) enum Command<'a> {
     },
     REHASH {},
     RESTART {},
-    SQUIT {
-        server: &'a str,
-        comment: &'a str,
-    },
     AWAY {
         text: Option<&'a str>,
     },
@@ -407,29 +396,27 @@ impl<'a> Command<'a> {
             MOTD { .. } => 16,
             VERSION { .. } => 17,
             ADMIN { .. } => 18,
-            CONNECT { .. } => 19,
-            LUSERS { .. } => 20,
-            TIME { .. } => 21,
-            STATS { .. } => 22,
-            LINKS { .. } => 23,
-            HELP { .. } => 24,
-            INFO { .. } => 25,
-            MODE { .. } => 26,
-            PRIVMSG { .. } => 27,
-            NOTICE { .. } => 28,
-            WHO { .. } => 29,
-            WHOIS { .. } => 30,
-            WHOWAS { .. } => 31,
-            KILL { .. } => 32,
-            REHASH { .. } => 33,
-            RESTART { .. } => 34,
-            SQUIT { .. } => 35,
-            AWAY { .. } => 36,
-            USERHOST { .. } => 37,
-            WALLOPS { .. } => 38,
-            ISON { .. } => 39,
-            DIE { .. } => 40,
-            SERVERS { .. } => 41,
+            LUSERS { .. } => 19,
+            TIME { .. } => 20,
+            STATS { .. } => 21,
+            LINKS { .. } => 22,
+            HELP { .. } => 23,
+            INFO { .. } => 24,
+            MODE { .. } => 25,
+            PRIVMSG { .. } => 26,
+            NOTICE { .. } => 27,
+            WHO { .. } => 28,
+            WHOIS { .. } => 29,
+            WHOWAS { .. } => 30,
+            KILL { .. } => 31,
+            REHASH { .. } => 32,
+            RESTART { .. } => 33,
+            AWAY { .. } => 34,
+            USERHOST { .. } => 35,
+            WALLOPS { .. } => 36,
+            ISON { .. } => 37,
+            DIE { .. } => 38,
+            SERVERS { .. } => 39,
         }
     }
 
@@ -641,25 +628,6 @@ impl<'a> Command<'a> {
             "ADMIN" => Ok(ADMIN {
                 target: message.params.get(0).copied(),
             }),
-            "CONNECT" => {
-                if !message.params.is_empty() {
-                    let mut param_it = message.params.iter();
-                    let target_server = param_it.next().unwrap();
-                    let port = param_it.next().map(|x| x.parse()).transpose();
-                    let remote_server = param_it.next().copied();
-                    // check whether port is number
-                    match port {
-                        Err(_) => Err(WrongParameter(CONNECTId, 1)),
-                        Ok(p) => Ok(CONNECT {
-                            target_server,
-                            port: p,
-                            remote_server,
-                        }),
-                    }
-                } else {
-                    Err(NeedMoreParams(CONNECTId))
-                }
-            }
             "LUSERS" => Ok(LUSERS {}),
             "TIME" => Ok(TIME {
                 server: message.params.get(0).copied(),
@@ -821,16 +789,6 @@ impl<'a> Command<'a> {
             }
             "REHASH" => Ok(REHASH {}),
             "RESTART" => Ok(RESTART {}),
-            "SQUIT" => {
-                if message.params.len() >= 2 {
-                    Ok(SQUIT {
-                        server: message.params[0],
-                        comment: message.params[1],
-                    })
-                } else {
-                    Err(NeedMoreParams(SQUITId))
-                }
-            }
             "AWAY" => Ok(AWAY {
                 text: message.params.get(0).copied(),
             }),
@@ -964,17 +922,6 @@ impl<'a> Command<'a> {
                 }
                 Ok(())
             }
-            CONNECT {
-                target_server,
-                remote_server,
-                ..
-            } => {
-                validate_server(target_server, WrongParameter(CONNECTId, 0))?;
-                if let Some(s) = remote_server {
-                    validate_server(s, WrongParameter(CONNECTId, 1))?;
-                }
-                Ok(())
-            }
             TIME { server } => {
                 if let Some(s) = server {
                     validate_server(s, WrongParameter(TIMEId, 0))?;
@@ -1056,10 +1003,6 @@ impl<'a> Command<'a> {
             }
             KILL { nickname, .. } => {
                 validate_username(nickname).map_err(|_| WrongParameter(KILLId, 0))
-            }
-            SQUIT { server, .. } => {
-                validate_server(server, WrongParameter(SQUITId, 0))?;
-                Ok(())
             }
             USERHOST { nicknames } => nicknames.iter().enumerate().try_for_each(|(i, n)| {
                 validate_username(n).map_err(|_| WrongParameter(USERHOSTId, i))

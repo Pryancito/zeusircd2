@@ -37,7 +37,7 @@ use crate::command::*;
 use crate::config::*;
 use crate::utils::*;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct User {
     pub(super) hostname: String,
     pub(super) sender: UnboundedSender<String>,
@@ -682,7 +682,9 @@ async fn ping_client_waker(d: Duration, quit: Arc<AtomicI32>, sender: UnboundedS
     while quit.load(Ordering::SeqCst) == 0 {
         intv.tick().await;
         if quit.load(Ordering::SeqCst) == 0 {
-            sender.send(()).unwrap();
+            if let Err(e) = sender.send(()) {
+                error!("Error enviando ping al cliente: {}", e);
+            }
         }
     }
 }
@@ -714,7 +716,6 @@ pub struct VolatileState {
     pub(super) max_users_count: usize,
     pub(super) nick_histories: HashMap<String, Vec<NickHistoryEntry>>,
     pub(super) quit_sender: Option<oneshot::Sender<String>>,
-    pub server_links: HashMap<String, ServerLink>,
 }
 
 impl VolatileState {
@@ -755,7 +756,6 @@ impl VolatileState {
             max_users_count: 0,
             nick_histories: HashMap::new(),
             quit_sender: Some(quit_sender),
-            server_links: HashMap::new(),
         }
     }
 
@@ -815,6 +815,21 @@ impl VolatileState {
         }
         let nick_hist = self.nick_histories.get_mut(old_nick).unwrap();
         nick_hist.push(nhe);
+    }
+}
+
+impl Clone for VolatileState {
+    fn clone(&self) -> Self {
+        VolatileState {
+            users: self.users.clone(),
+            channels: self.channels.clone(),
+            wallops_users: self.wallops_users.clone(),
+            invisible_users_count: self.invisible_users_count,
+            operators_count: self.operators_count,
+            max_users_count: self.max_users_count,
+            nick_histories: self.nick_histories.clone(),
+            quit_sender: None,
+        }
     }
 }
 

@@ -54,8 +54,7 @@ use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
-use crate::state::server_communication::ServerCommunication;
-
+use crate::state::server_communication::{ServerMessage, ServerCommunication};
 use Reply::*;
 
 mod structs;
@@ -71,9 +70,8 @@ pub(crate) struct MainState {
     state: RwLock<VolatileState>,
     created: String,
     created_time: DateTime<Local>,
+    serv_comm: Arc<Mutex<Option<ServerCommunication>>>,
     command_counts: [AtomicU64; NUM_COMMANDS],
-    #[allow(dead_code)]
-    server_communication: Arc<Mutex<ServerCommunication>>,
 }
 
 impl MainState {
@@ -93,14 +91,16 @@ impl MainState {
         }
         let state = RwLock::new(VolatileState::new_from_config(&config));
         let now = Local::now();
+        let conns_count = Arc::new(AtomicUsize::new(0));
         Ok(MainState {
             config: config.clone(),
             user_config_idxs,
             oper_config_idxs,
             state,
-            conns_count: Arc::new(AtomicUsize::new(0)),
+            conns_count,
             created: now.to_rfc2822(),
             created_time: now,
+            serv_comm: Arc::new(Mutex::new(None)),
             command_counts: [
                 AtomicU64::new(0),
                 AtomicU64::new(0),
@@ -145,11 +145,6 @@ impl MainState {
                 AtomicU64::new(0),
                 AtomicU64::new(0),
             ],
-            server_communication: Arc::new(Mutex::new(ServerCommunication::new(
-                &config.amqp.url,
-                &config.amqp.exchange,
-                &config.amqp.queue,
-            ).await.map_err(|e| e.to_string())?)),
         })
     }
 
@@ -384,9 +379,6 @@ impl MainState {
                         self.process_version(conn_state, target).await,
                     ADMIN{ target } =>
                         self.process_admin(conn_state, target).await,
-                    CONNECT{ target_server, port, remote_server } =>
-                        self.process_connect(conn_state, target_server, port,
-                                remote_server).await,
                     LUSERS{ } => self.process_lusers(conn_state).await,
                     TIME{ server } =>
                         self.process_time(conn_state, server).await,
@@ -412,8 +404,6 @@ impl MainState {
                         self.process_kill(conn_state, nickname, comment).await,
                     REHASH{ } => self.process_rehash(conn_state).await,
                     RESTART{ } => self.process_restart(conn_state).await,
-                    SQUIT{ server, comment } =>
-                        self.process_squit(conn_state, server, comment).await,
                     AWAY{ text } =>
                         self.process_away(conn_state, text).await,
                     USERHOST{ nicknames } =>
@@ -464,19 +454,6 @@ impl MainState {
             return Ok(());
         }
 
-        // Obtener la lista de servidores
-        
-        // Enviar información de cada servidor
-        for (server_name, link) in &state.server_links {
-            self.feed_msg(&mut conn_state.stream, 
-                format!(":{} 364 {} {} {} :{}", 
-                    self.config.name,
-                    conn_state.user_state.nick.as_ref().unwrap(),
-                    server_name,
-                    link.hop_count,
-                    link.description)).await?;
-        }
-        
         // Enviar el final de la lista
         self.feed_msg(&mut conn_state.stream, 
             format!(":{} 365 {} :End of /SERVERS list", 
@@ -484,14 +461,6 @@ impl MainState {
                 conn_state.user_state.nick.as_ref().unwrap())).await?;
 
         Ok(())
-    }
-    #[allow(dead_code)]
-    async fn send_reply<T: fmt::Display>(
-        &self,
-        stream: &mut BufferedLineStream,
-        reply: T,
-    ) -> Result<(), String> {
-        self.feed_msg(stream, reply).await.map_err(|e| e.to_string())
     }
 }
 
@@ -946,6 +915,20 @@ pub(crate) async fn run_server(
             }
         }
     });
+
+    let mut amqp_conn = ServerCommunication::new(
+        &config.amqp.url,
+        &config.name,
+        &config.amqp.exchange,
+        &config.amqp.queue)
+        .await;
+    
+    match amqp_conn.connect().await {
+        Ok(_) => info!("Conexión AMQP establecida exitosamente"),
+        Err(e) => error!("Error al conectar AMQP: {}", e)
+    }
+
+    main_state.serv_comm.lock().await.replace(amqp_conn);
 
     Ok((main_state_to_return, handle))
 }

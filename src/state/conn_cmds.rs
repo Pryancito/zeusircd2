@@ -418,7 +418,6 @@ impl super::MainState {
 
                 // run ping waker for this connection
                 conn_state.run_ping_waker(&self.config);
-                info!("Auth succeed for {}", conn_state.user_state.source);
             } else {
                 // if authentication failed
                 info!("Auth failed for {}", conn_state.user_state.source);

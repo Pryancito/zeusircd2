@@ -22,6 +22,7 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::iter::FromIterator;
 use std::time::{SystemTime, UNIX_EPOCH};
+use crate::state::server_communication::ServerCommunication;
 
 impl super::MainState {
     async fn process_privmsg_notice<'a>(
@@ -184,6 +185,12 @@ impl super::MainState {
                                 })?;
                             }
                             something_done = true;
+
+                            // Enviar mensaje AMQP para canales
+                            
+                            if let Some(server_comm) = &*self.serv_comm.lock().await {
+                                let _ = server_comm.publish_message(&msg_str).await;
+                            }
                         }
                     } else if !notice {
                         let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchChannel403 {
@@ -194,7 +201,7 @@ impl super::MainState {
                 } else {
                     // to user
                     if let Some(cur_user) = state.users.get(*target) {
-                        cur_user.send_msg_display(&conn_state.user_state.source, msg_str)?;
+                        cur_user.send_msg_display(&conn_state.user_state.source, &msg_str)?;
                         if !notice {
                             // if user away
                             if let Some(ref away) = cur_user.away {
@@ -206,6 +213,12 @@ impl super::MainState {
                             }
                         }
                         something_done = true;
+
+                        // Enviar mensaje AMQP para usuarios
+                        if let Some(server_comm) = &*self.serv_comm.lock().await {
+                            let _ = server_comm.publish_message(&msg_str).await;
+                        }
+                        // El campo server_comm no existe en VolatileState, así que eliminamos esta línea
                     } else if !notice {
                         let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchNick401 {
                             client,

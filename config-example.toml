@@ -29,7 +29,6 @@ log_level = "INFO"
 # Optional. Log to specified file.
 log_file = "irc.log"
 
-
 # List of listeners (IP:port combinations)
 [[listeners]]
 # Address from your server is listening connections.
@@ -151,18 +150,3 @@ queue = "leaf"
 # Credenciales opcionales
 username = ""
 password = ""
-
-# Lista de servidores conectados
-[[servers]]
-name = "leaf.localhost"
-description = "Server LEAF"
-host = "127.0.0.1"
-port = 4000
-password = "blabla"
-
-#[[servers]]
-#name = "server2.localhost"
-#description = "Server 2 node"
-#host = "127.0.0.1"
-#port = 4001
-#password = "blabla"
