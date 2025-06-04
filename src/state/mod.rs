@@ -49,12 +49,13 @@ use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
 use tokio_tungstenite::accept_async;
+use tokio::time::Duration;
 
 use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
-use crate::state::server_communication::{ServerMessage, ServerCommunication};
+use crate::state::server_communication::ServerCommunication;
 use Reply::*;
 
 mod structs;
@@ -67,10 +68,10 @@ pub(crate) struct MainState {
     // key is oper name
     oper_config_idxs: HashMap<String, usize>,
     conns_count: Arc<AtomicUsize>,
-    state: RwLock<VolatileState>,
+    state: Arc<RwLock<VolatileState>>,
+    serv_comm: RwLock<ServerCommunication>,
     created: String,
     created_time: DateTime<Local>,
-    serv_comm: Arc<Mutex<Option<ServerCommunication>>>,
     command_counts: [AtomicU64; NUM_COMMANDS],
 }
 
@@ -89,18 +90,27 @@ impl MainState {
                 oper_config_idxs.insert(o.name.clone(), i);
             });
         }
-        let state = RwLock::new(VolatileState::new_from_config(&config));
+        let state = Arc::new(RwLock::new(VolatileState::new_from_config(&config)));
+        let serv_comm = {
+            RwLock::new(ServerCommunication::new(
+                &state,
+                &config.amqp.url,
+                &config.name,
+                &config.amqp.exchange,
+                &config.amqp.queue,
+            ).await)
+        };
         let now = Local::now();
         let conns_count = Arc::new(AtomicUsize::new(0));
-        Ok(MainState {
+        let mut state = MainState {
             config: config.clone(),
             user_config_idxs,
             oper_config_idxs,
             state,
+            serv_comm,
             conns_count,
             created: now.to_rfc2822(),
             created_time: now,
-            serv_comm: Arc::new(Mutex::new(None)),
             command_counts: [
                 AtomicU64::new(0),
                 AtomicU64::new(0),
@@ -145,7 +155,8 @@ impl MainState {
                 AtomicU64::new(0),
                 AtomicU64::new(0),
             ],
-        })
+        };
+        Ok(state)
     }
 
     fn count_command(&self, cmd: &Command) {
@@ -916,20 +927,9 @@ pub(crate) async fn run_server(
         }
     });
 
-    let mut amqp_conn = ServerCommunication::new(
-        &config.amqp.url,
-        &config.name,
-        &config.amqp.exchange,
-        &config.amqp.queue)
-        .await;
-    
-    match amqp_conn.connect().await {
-        Ok(_) => info!("Conexión AMQP establecida exitosamente"),
-        Err(e) => error!("Error al conectar AMQP: {}", e)
-    }
+    let _ = main_state.serv_comm.write().await.connect().await;
 
-    amqp_conn.start_consuming().await.unwrap();
-    main_state.serv_comm.lock().await.replace(amqp_conn);
+    let _ = main_state.serv_comm.write().await.start_consuming().await;
 
     Ok((main_state_to_return, handle))
 }

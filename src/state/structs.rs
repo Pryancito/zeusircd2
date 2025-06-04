@@ -52,6 +52,7 @@ pub(super) struct User {
     pub(super) last_activity: u64,
     pub(super) signon: u64,
     pub(super) history_entry: NickHistoryEntry,
+    pub(super) server: String,
 }
 
 impl User {
@@ -85,6 +86,7 @@ impl User {
                 realname: user_state.realname.as_ref().unwrap().clone(),
                 signon: now_ts,
             },
+            server: config.name.clone(),
         }
     }
 
@@ -114,6 +116,13 @@ impl User {
         t: T,
     ) -> Result<(), SendError<String>> {
         self.sender.send(format!(":{} {}", source, t))
+    }
+
+    pub(super) fn send_msg(
+        &self,
+        msg: &String,
+    ) -> Result<(), SendError<String>> {
+        self.sender.send(format!("{}", msg))
     }
 }
 
