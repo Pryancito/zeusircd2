@@ -35,7 +35,7 @@ use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{oneshot, RwLock, Mutex};
+use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
 #[cfg(feature = "tls_openssl")]
 use tokio_openssl::SslStream;
@@ -49,7 +49,6 @@ use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
 use tokio_tungstenite::accept_async;
-use tokio::time::Duration;
 
 use crate::command::*;
 use crate::config::*;
@@ -102,7 +101,7 @@ impl MainState {
         };
         let now = Local::now();
         let conns_count = Arc::new(AtomicUsize::new(0));
-        let mut state = MainState {
+        let state = MainState {
             config: config.clone(),
             user_config_idxs,
             oper_config_idxs,

@@ -33,8 +33,6 @@ use command::*;
 use config::*;
 use state::*;
 use utils::*;
-use server_communication::*;
-use tracing::{info, error};
 
 #[cfg(feature = "sqlite")]
 use crate::database::sqlite::sqlite_impl::{SQLiteNickDatabase, SQLiteChannelDatabase};

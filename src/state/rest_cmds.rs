@@ -22,7 +22,6 @@ use std::collections::HashSet;
 use std::error::Error;
 use std::iter::FromIterator;
 use std::time::{SystemTime, UNIX_EPOCH};
-use crate::state::server_communication::ServerCommunication;
 
 impl super::MainState {
     async fn process_privmsg_notice<'a>(
@@ -189,11 +188,10 @@ impl super::MainState {
                             // Enviar mensaje AMQP para canales
                             
                             if !chan_str.starts_with('&') {
-                                if let serv_comm = self.serv_comm.read().await {
-                                    let mensaje = format!(":{} {} {}",
-                                        self.config.name, conn_state.user_state.source, msg_str);
-                                    let _ = serv_comm.publish_message(&mensaje).await;
-                                }
+                                let serv_comm = self.serv_comm.read().await;
+                                let mensaje = format!(":{} {} {}",
+                                    self.config.name, conn_state.user_state.source, msg_str);
+                                let _ = serv_comm.publish_message(&mensaje).await;
                             }
                         }
                     } else if !notice {
@@ -220,11 +218,10 @@ impl super::MainState {
 
                         // Enviar mensaje AMQP para usuarios
                         if !chan_str.starts_with('&') {
-                            if let serv_comm = self.serv_comm.read().await {
-                                let mensaje = format!(":{} {} {}",
-                                    self.config.name, conn_state.user_state.source, msg_str);
-                                let _ = serv_comm.publish_message(&mensaje).await;
-                            }
+                            let serv_comm = self.serv_comm.read().await;
+                            let mensaje = format!(":{} {} {}",
+                                self.config.name, conn_state.user_state.source, msg_str);
+                            let _ = serv_comm.publish_message(&mensaje).await;
                         }
                         // El campo server_comm no existe en VolatileState, así que eliminamos esta línea
                     } else if !notice {

@@ -117,13 +117,6 @@ impl User {
     ) -> Result<(), SendError<String>> {
         self.sender.send(format!(":{} {}", source, t))
     }
-
-    pub(super) fn send_msg(
-        &self,
-        msg: &String,
-    ) -> Result<(), SendError<String>> {
-        self.sender.send(format!("{}", msg))
-    }
 }
 
 #[derive(Copy, Clone, Default, Debug, PartialEq, Eq)]
@@ -709,11 +702,6 @@ async fn pong_client_timeout(
             sender.send(()).unwrap();
         }
     }
-}
-
-pub struct ServerLink {
-    pub hop_count: u32,
-    pub description: String,
 }
 
 pub struct VolatileState {

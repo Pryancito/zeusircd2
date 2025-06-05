@@ -4,21 +4,13 @@ use lapin::{
     Connection, ConnectionProperties,
     BasicProperties,
 };
-use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::result::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::state::*;
-use std::net::{IpAddr, Ipv4Addr};
-use std::sync::atomic::{AtomicUsize};
 use futures::stream::StreamExt;
-use tracing::{error, warn};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::TcpStream;
-use tokio::time::Duration;
-use std::ops::DerefMut;
-use lazy_static::__Deref;
+use tracing::{error};
 
 #[derive(Clone)]
 pub(crate) struct ServerCommunication {
@@ -34,7 +26,7 @@ pub(crate) struct ServerCommunication {
 
 impl ServerCommunication {
     pub(crate) async fn new(state: &Arc<RwLock<VolatileState>>, amqp_url: &str, server: &String, exchange: &str, queue: &str) -> Self {
-        let mut server_comm = Self {
+        let server_comm = Self {
             amqp_url: amqp_url.to_string(),
             exchange: exchange.to_string(),
             queue: queue.to_string(),
@@ -95,7 +87,7 @@ impl ServerCommunication {
         Ok(())
     }
 
-    pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
+    /*pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
         if !self.connected {
             return Err("Not connected to this server".into());
         }
@@ -109,7 +101,7 @@ impl ServerCommunication {
         info!("Disconnected from AMQP.");
 
         Ok(())
-    }
+    }*/
 
     pub(crate) async fn publish_message(&self, message: &String) -> Result<(), Box<dyn Error>> {
         // Serializar el mensaje a JSON
@@ -318,7 +310,7 @@ impl ServerCommunication {
             return Err("No hay conexión AMQP activa".into());
         }
 
-        self.consume_messages(move |message| {
+        self.consume_messages(move |_message| {
             async move {
                 Ok(())
             }
