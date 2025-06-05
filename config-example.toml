@@ -146,7 +146,4 @@ url = "amqp://172.17.0.2:5672"
 # Nombre del exchange para mensajes entre servidores
 exchange = "ZeusiRCd"
 # Cola para este servidor
-queue = "leaf"
-# Credenciales opcionales
-username = ""
-password = ""
+queue = "hub"

@@ -188,10 +188,12 @@ impl super::MainState {
 
                             // Enviar mensaje AMQP para canales
                             
-                            if let serv_comm = self.serv_comm.read().await {
-                                let mensaje = format!(":{} {} {}",
-                                    self.config.name, conn_state.user_state.source, msg_str);
-                                let _ = serv_comm.publish_message(&mensaje).await;
+                            if !chan_str.starts_with('&') {
+                                if let serv_comm = self.serv_comm.read().await {
+                                    let mensaje = format!(":{} {} {}",
+                                        self.config.name, conn_state.user_state.source, msg_str);
+                                    let _ = serv_comm.publish_message(&mensaje).await;
+                                }
                             }
                         }
                     } else if !notice {
@@ -217,10 +219,12 @@ impl super::MainState {
                         something_done = true;
 
                         // Enviar mensaje AMQP para usuarios
-                        if let serv_comm = self.serv_comm.read().await {
-                            let mensaje = format!(":{} {} {}",
+                        if !chan_str.starts_with('&') {
+                            if let serv_comm = self.serv_comm.read().await {
+                                let mensaje = format!(":{} {} {}",
                                     self.config.name, conn_state.user_state.source, msg_str);
                                 let _ = serv_comm.publish_message(&mensaje).await;
+                            }
                         }
                         // El campo server_comm no existe en VolatileState, así que eliminamos esta línea
                     } else if !notice {

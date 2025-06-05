@@ -187,15 +187,17 @@ impl ServerCommunication {
                 return Err(e);
             }
         };
+        let command = result.get_command().split_whitespace().nth(0).unwrap_or("");
         // Procesar comandos de manera más estructurada
-        match result.get_command().split_whitespace().nth(0).unwrap_or("") {
-            "PRIVMSG" => {
+        match command {
+            "PRIVMSG" | "NOTICE" => {
                 let channel = result.get_command().split_whitespace().nth(1).unwrap_or("");
                 let text = result.get_text();
                 let source = self.parse_user(result.get_user().to_string());
                 let snick = source.unwrap().nick.clone();
                 // Crear un mensaje que simule venir del servidor
-                let server_message = format!("PRIVMSG {} :{}",
+                let server_message = format!("{} {} :{}",
+                    command,
                     channel,
                     text
                 );
@@ -221,24 +223,25 @@ impl ServerCommunication {
                     error!("Canal {} no encontrado", channel);
                 }
             }
-            /*"MODE" => {
-                let parts: Vec<&str> = result.get_text().split_whitespace().collect();
+            "MODE" => {
+                /*let parts: Vec<&str> = result.get_text().split_whitespace().collect();
                 if parts.len() >= 3 {
-                    let channel = parts[0];
-                    let mode = parts[1];
-                    let mask = parts[2];
+                    let channel = result.get_command().split_whitespace().nth(1).unwrap_or("");
+                    let mode = parts[0];
+                    let mask = parts[1];
                     
                     // Procesar modo de ban (+b o -b)
                     if mode == "+b" || mode == "-b" {
-                        // Obtener todas las conexiones activas
+                        let state = self.state.read().await;
+                        let state = state.users.get()
                         for conn in state.get_connections() {
                             if let Ok(mut conn_state) = conn.lock() {
                                 let _ = state.process_mode(&mut conn_state, channel, vec![(mode, vec![mask])]).await;
                             }
                         }
                     }
-                }
-            }*/
+                }*/
+            }
             _ => {
                 error!("Server Message error: Comando desconocido {}", result.get_command());
             }
@@ -315,9 +318,7 @@ impl ServerCommunication {
             return Err("No hay conexión AMQP activa".into());
         }
 
-        let server_comm = self.clone();
         self.consume_messages(move |message| {
-            let server_comm = server_comm.clone();
             async move {
                 Ok(())
             }
