@@ -10,7 +10,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::state::*;
 use futures::stream::StreamExt;
-use tracing::{error};
+use tracing::error;
+use std::time::{UNIX_EPOCH, SystemTime};
 
 #[derive(Clone)]
 pub(crate) struct ServerCommunication {
@@ -20,7 +21,7 @@ pub(crate) struct ServerCommunication {
     server_name: String,
     connected: bool,
     connection: Arc<Mutex<Option<Connection>>>,
-    channel: Arc<Mutex<Option<lapin::Channel>>>,  // Envolver en Arc<Mutex>
+    channel: Arc<Mutex<Option<lapin::Channel>>>,
     pub(super) state: Arc<RwLock<VolatileState>>,
 }
 
@@ -216,23 +217,72 @@ impl ServerCommunication {
                 }
             }
             "MODE" => {
-                /*let parts: Vec<&str> = result.get_text().split_whitespace().collect();
-                if parts.len() >= 3 {
-                    let channel = result.get_command().split_whitespace().nth(1).unwrap_or("");
-                    let mode = parts[0];
-                    let mask = parts[1];
-                    
-                    // Procesar modo de ban (+b o -b)
-                    if mode == "+b" || mode == "-b" {
-                        let state = self.state.read().await;
-                        let state = state.users.get()
-                        for conn in state.get_connections() {
-                            if let Ok(mut conn_state) = conn.lock() {
-                                let _ = state.process_mode(&mut conn_state, channel, vec![(mode, vec![mask])]).await;
+                let parts: Vec<&str> = message.split_whitespace().collect();
+                let channel = parts[3];
+                let mode = parts[4];
+                let mask = parts[5];
+
+                let server_message = format!("{} {} {} {}",
+                    command,
+                    channel,
+                    mode,
+                    mask
+                );
+
+                // Procesar modo de ban (+b o -b)
+                if mode == "+b" {
+                    let mut state = self.state.write().await;
+                    let source = self.parse_user(result.get_user().to_string());
+                    let snick = source.unwrap().nick.clone();
+                    let chanobj: &mut Channel = state.channels.get_mut(&channel.to_string()).ok_or("Canal no encontrado")?;
+                    let mut ban = chanobj.modes.ban.take().unwrap_or_default();
+                    let norm_bmask = normalize_sourcemask(mask);
+                    ban.insert(norm_bmask.clone());
+                    chanobj.ban_info.insert(
+                        norm_bmask.clone(),
+                        BanInfo {
+                            who: snick.to_string(),
+                            set_time: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs(),
+                        },
+                    );
+                    chanobj.modes.ban = Some(ban);
+                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                    for nick in nicks {
+                        if let Some(user) = state.users.get_mut(&nick.to_string()) {
+                            if user.server != result.get_server() {
+                                let _ = user.send_msg_display(
+                                    &result.get_user(),
+                                    server_message.as_str()
+                                );
                             }
+                        } else {
+                            error!("Error enviando mensaje a usuario {}", nick);
                         }
                     }
-                }*/
+                } else if mode == "-b" {
+                    let mut state = self.state.write().await;
+                    let chanobj: &mut Channel = state.channels.get_mut(&channel.to_string()).ok_or("Canal no encontrado")?;
+                    let mut ban = chanobj.modes.ban.take().unwrap_or_default();
+                    let norm_bmask = normalize_sourcemask(mask);
+                    ban.remove(&norm_bmask);
+                    chanobj.ban_info.remove(&norm_bmask);
+                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                    for nick in nicks {
+                        if let Some(user) = state.users.get_mut(&nick.to_string()) {
+                            if user.server != result.get_server() {
+                                let _ = user.send_msg_display(
+                                    &result.get_user(),
+                                    server_message.as_str()
+                                );
+                            }
+                        } else {
+                            error!("Error enviando mensaje a usuario {}", nick);
+                        }
+                    }
+                }
             }
             _ => {
                 error!("Server Message error: Comando desconocido {}", result.get_command());
