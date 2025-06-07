@@ -131,6 +131,7 @@ pub(crate) struct ChannelModes {
     // If channel modes we use Option to avoid unnecessary field definition if list
     // in this field should be. The administrator can omit fields for empty lists.
     pub(crate) ban: Option<HashSet<String>>,
+    pub(crate) global_ban: Option<HashSet<String>>,
     pub(crate) exception: Option<HashSet<String>>,
     pub(crate) client_limit: Option<usize>,
     pub(crate) invite_exception: Option<HashSet<String>>,
@@ -159,13 +160,23 @@ impl ChannelModes {
     }
 
     pub(crate) fn banned(&self, source: &str) -> bool {
-        self.ban
+        // Check local bans
+        let local_banned = self.ban
             .as_ref()
-            .map_or(false, |b| b.iter().any(|b| match_wildcard(b, source)))
-            && (!self
-                .exception
-                .as_ref()
-                .map_or(false, |e| e.iter().any(|e| match_wildcard(e, source))))
+            .map_or(false, |b| b.iter().any(|b| match_wildcard(b, source)));
+        
+        // Check global bans
+        let global_banned = self.global_ban
+            .as_ref()
+            .map_or(false, |b| b.iter().any(|b| match_wildcard(b, source)));
+
+        // User is banned if either local or global ban matches
+        (local_banned || global_banned) && 
+        // But not if there's an exception
+        (!self
+            .exception
+            .as_ref()
+            .map_or(false, |e| e.iter().any(|e| match_wildcard(e, source))))
     }
 
     // rename user - just rename nick in lists.
@@ -233,6 +244,12 @@ impl fmt::Display for ChannelModes {
         if let Some(ref ban) = self.ban {
             ban.iter().for_each(|b| {
                 s += " +b ";
+                s += b;
+            });
+        }
+        if let Some(ref gban) = self.global_ban {
+            gban.iter().for_each(|b| {
+                s += " +B ";
                 s += b;
             });
         }
@@ -704,6 +721,24 @@ mod test {
         assert!(chm.banned("zigi!zigol@gugu.com"));
         assert!(!chm.banned("bom!bam@ggregi.com"));
         assert!(!chm.banned("zigi!zigol@ggregi.net"));
+
+        // Test global bans
+        let mut chm = ChannelModes::default();
+        chm.global_ban = Some(["bom!*@*".to_string()].into());
+        assert!(chm.banned("bom!bom@gugu.com"));
+        assert!(chm.banned("bom!bam@ggregi.com"));
+        assert!(!chm.banned("bam!bom@gugu.com"));
+        
+        // Test both local and global bans
+        chm.ban = Some(["zigi!*@*".to_string()].into());
+        assert!(chm.banned("bom!bom@gugu.com")); // banned by global
+        assert!(chm.banned("zigi!zigol@gugu.com")); // banned by local
+        assert!(!chm.banned("other!user@host.com")); // not banned
+        
+        // Test exceptions with global bans
+        chm.exception = Some(["bom!*@ggregi*".to_string()].into());
+        assert!(chm.banned("bom!bom@gugu.com")); // still banned
+        assert!(!chm.banned("bom!bam@ggregi.com")); // exception applies
     }
 
     #[test]

@@ -558,10 +558,6 @@ impl super::MainState {
                                                     .as_secs(),
                                             },
                                         );
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} +b {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     } else {
                                         // put to applied modes
                                         modes_params_string += " -b ";
@@ -569,11 +565,6 @@ impl super::MainState {
 
                                         ban.remove(&norm_bmask);
                                         chanobj.ban_info.remove(&norm_bmask);
-
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} -b {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     }
                                     chanobj.modes.ban = Some(ban);
                                 } else {
@@ -589,6 +580,103 @@ impl super::MainState {
                             } else {
                                 // print
                                 if let Some(ban) = &chanobj.modes.ban {
+                                    for b in ban {
+                                        if let Some(ban_info) = chanobj.ban_info.get(&b.clone()) {
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                RplBanList367 {
+                                                    client,
+                                                    channel: target,
+                                                    mask: b,
+                                                    who: &ban_info.who,
+                                                    set_ts: ban_info.set_time,
+                                                },
+                                            )
+                                            .await?;
+                                        } else {
+                                            // if not found
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                RplBanList367 {
+                                                    client,
+                                                    channel: target,
+                                                    mask: b,
+                                                    who: "",
+                                                    set_ts: 0,
+                                                },
+                                            )
+                                            .await?;
+                                        }
+                                    }
+                                }
+                                self.feed_msg(
+                                    &mut conn_state.stream,
+                                    RplEndOfBanList368 {
+                                        client,
+                                        channel: target,
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
+                        'B' => {
+                            if let Some(bmask) = margs_it.next() {
+                                if if_half_op {
+                                    let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
+                                    let norm_bmask = normalize_sourcemask(bmask);
+                                    if mode_set {
+                                        // put to applied modes
+                                        modes_params_string += " +B ";
+                                        modes_params_string += &norm_bmask;
+
+                                        gban.insert(norm_bmask.clone());
+                                        // add to ban_info
+                                        chanobj.ban_info.insert(
+                                            norm_bmask.clone(),
+                                            BanInfo {
+                                                who: conn_state
+                                                    .user_state
+                                                    .nick
+                                                    .as_ref()
+                                                    .unwrap()
+                                                    .to_string(),
+                                                set_time: SystemTime::now()
+                                                    .duration_since(UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_secs(),
+                                            },
+                                        );
+                                        let serv_comm = self.serv_comm.read().await;
+                                        let mensaje = format!(":{} {} MODE {} +B {}",
+                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                        let _ = serv_comm.publish_message(&mensaje).await;
+                                    } else {
+                                        // put to applied modes
+                                        modes_params_string += " -B ";
+                                        modes_params_string += &norm_bmask;
+
+                                        gban.remove(&norm_bmask);
+                                        chanobj.ban_info.remove(&norm_bmask);
+
+                                        let serv_comm = self.serv_comm.read().await;
+                                        let mensaje = format!(":{} {} MODE {} -B {}",
+                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                        let _ = serv_comm.publish_message(&mensaje).await;
+                                    }
+                                    chanobj.modes.global_ban = Some(gban);
+                                } else {
+                                    self.feed_msg(
+                                        &mut conn_state.stream,
+                                        ErrChanOpPrivsNeeded482 {
+                                            client,
+                                            channel: target,
+                                        },
+                                    )
+                                    .await?;
+                                }
+                            } else {
+                                // print
+                                if let Some(ban) = &chanobj.modes.global_ban {
                                     for b in ban {
                                         if let Some(ban_info) = chanobj.ban_info.get(&b.clone()) {
                                             self.feed_msg(
@@ -1269,7 +1357,7 @@ mod test {
             );
             assert_eq!(
                 ":irc.irc 005 tommy AWAYLEN=1000 CASEMAPPING=ascii \
-                    CHANMODES=Iabehiklmnopqstv CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
+                    CHANMODES=IabehiklmnopqstvB CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
                     HOSTLEN=1000 INVEX=I KEYLEN=1000 :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()

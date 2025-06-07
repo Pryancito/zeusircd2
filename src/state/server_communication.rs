@@ -230,14 +230,14 @@ impl ServerCommunication {
                 );
 
                 // Procesar modo de ban (+b o -b)
-                if mode == "+b" {
+                if mode == "+B" {
                     let mut state = self.state.write().await;
                     let source = self.parse_user(result.get_user().to_string());
                     let snick = source.unwrap().nick.clone();
                     let chanobj: &mut Channel = state.channels.get_mut(&channel.to_string()).ok_or("Canal no encontrado")?;
-                    let mut ban = chanobj.modes.ban.take().unwrap_or_default();
+                    let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
-                    ban.insert(norm_bmask.clone());
+                    gban.insert(norm_bmask.clone());
                     chanobj.ban_info.insert(
                         norm_bmask.clone(),
                         BanInfo {
@@ -248,7 +248,7 @@ impl ServerCommunication {
                                 .as_secs(),
                         },
                     );
-                    chanobj.modes.ban = Some(ban);
+                    chanobj.modes.global_ban = Some(gban);
                     let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&nick.to_string()) {
@@ -259,15 +259,15 @@ impl ServerCommunication {
                                 );
                             }
                         } else {
-                            error!("Error enviando mensaje a usuario {}", nick);
+                            error!("Error poniendo ban global en el canal {}", channel);
                         }
                     }
-                } else if mode == "-b" {
+                } else if mode == "-B" {
                     let mut state = self.state.write().await;
                     let chanobj: &mut Channel = state.channels.get_mut(&channel.to_string()).ok_or("Canal no encontrado")?;
-                    let mut ban = chanobj.modes.ban.take().unwrap_or_default();
+                    let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
-                    ban.remove(&norm_bmask);
+                    gban.remove(&norm_bmask);
                     chanobj.ban_info.remove(&norm_bmask);
                     let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
                     for nick in nicks {
@@ -279,7 +279,7 @@ impl ServerCommunication {
                                 );
                             }
                         } else {
-                            error!("Error enviando mensaje a usuario {}", nick);
+                            error!("Error quitando ban global en el canal {}", channel);
                         }
                     }
                 }

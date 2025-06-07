@@ -65,7 +65,8 @@ impl super::MainState {
                                 false
                             }
                         };
-                        // check whether user in channel is banned
+
+                        // check whether user is banned (this check should be done before checking if user is in channel)
                         let can_send = can_send && {
                             if !chanobj.modes.banned(&conn_state.user_state.source) {
                                 true
@@ -79,6 +80,7 @@ impl super::MainState {
                                 false
                             }
                         };
+
                         // check whether is channel moderated and user have voice permissions
                         let can_send = can_send && {
                             if !chanobj.modes.moderated

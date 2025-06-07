@@ -535,7 +535,7 @@ pub(crate) fn validate_channelmodes<'a>(
                     '-' => {
                         mode_set = false;
                     }
-                    'b' | 'e' | 'I' => {
+                    'b' | 'B' | 'e' | 'I' => {
                         margs_it.next(); // consume argument
                         arg_param_idx += 1;
                     }
