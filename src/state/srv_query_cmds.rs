@@ -746,10 +746,12 @@ impl super::MainState {
                                             });
                                         }
                                         
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} +B {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
+                                        if !target.starts_with('&') {
+                                            let serv_comm = self.serv_comm.read().await;
+                                            let mensaje = format!(":{} {} MODE {} +B {}",
+                                                self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                            let _ = serv_comm.publish_message(&mensaje).await;
+                                        }
                                     } else {
                                         // put to applied modes
                                         modes_params_string += " -B ";
@@ -758,10 +760,12 @@ impl super::MainState {
                                         gban.remove(&norm_bmask);
                                         chanobj.ban_info.remove(&norm_bmask);
 
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} -B {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
+                                        if !target.starts_with('&') {
+                                            let serv_comm = self.serv_comm.read().await;
+                                            let mensaje = format!(":{} {} MODE {} -B {}",
+                                                self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                            let _ = serv_comm.publish_message(&mensaje).await;
+                                        }
                                     }
                                     chanobj.modes.global_ban = Some(gban);
                                 } else {
