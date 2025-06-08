@@ -280,6 +280,7 @@ impl ChannelTopic {
 pub(super) struct BanInfo {
     pub(super) set_time: u64,
     pub(super) who: String,
+    pub(super) expires_at: Option<u64>,
 }
 
 #[derive(Default, Clone, Debug, PartialEq, Eq)]

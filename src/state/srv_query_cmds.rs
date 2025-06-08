@@ -23,6 +23,7 @@ use std::error::Error;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
+use tokio::time::Duration;
 
 impl super::MainState {
     pub(super) async fn process_motd<'a>(
@@ -536,6 +537,16 @@ impl super::MainState {
                                 if if_half_op {
                                     let mut ban = chanobj.modes.ban.take().unwrap_or_default();
                                     let norm_bmask = normalize_sourcemask(bmask);
+                                    
+                                    // Extraer el tiempo de expiración si existe
+                                    let (_, duration) = if let Some(idx) = bmask.find('|') {
+                                        let (mask_part, duration_part) = bmask.split_at(idx);
+                                        let duration = duration_part[1..].parse::<u64>().ok();
+                                        (mask_part.to_string(), duration)
+                                    } else {
+                                        (bmask.to_string(), None)
+                                    };
+
                                     if mode_set {
                                         // put to applied modes
                                         modes_params_string += " +b ";
@@ -543,6 +554,13 @@ impl super::MainState {
 
                                         ban.insert(norm_bmask.clone());
                                         // add to ban_info
+                                        let current_time = SystemTime::now()
+                                            .duration_since(UNIX_EPOCH)
+                                            .unwrap()
+                                            .as_secs();
+                                        
+                                        let expires_at = duration.map(|d| current_time + d);
+                                        
                                         chanobj.ban_info.insert(
                                             norm_bmask.clone(),
                                             BanInfo {
@@ -552,12 +570,47 @@ impl super::MainState {
                                                     .as_ref()
                                                     .unwrap()
                                                     .to_string(),
-                                                set_time: SystemTime::now()
-                                                    .duration_since(UNIX_EPOCH)
-                                                    .unwrap()
-                                                    .as_secs(),
+                                                set_time: current_time,
+                                                expires_at,
                                             },
                                         );
+
+                                        if let Some(duration) = duration {
+                                            let channel_name = target.to_string();
+                                            let ban_mask_for_timeout = norm_bmask.clone(); // Usa la variable String, se moverá a la closure
+                                            let state_clone = self.state.clone();
+                                            let config_clone = self.config.clone();
+                    
+                                            tokio::spawn(async move {
+                                                tokio::time::sleep(Duration::from_secs(duration)).await;
+                    
+                                                // Remover el ban expirado
+                                                let mut state = state_clone.write().await;
+                                                if let Some(channel) = state.channels.get_mut(&channel_name) {
+                                                    if let Some(ban_set) = &mut channel.modes.ban {
+                                                        // Ahora ban_mask_for_timeout es un String, así que &ban_mask_for_timeout es &String
+                                                        ban_set.remove(&ban_mask_for_timeout);
+                                                        channel.ban_info.remove(&ban_mask_for_timeout);
+                    
+                                                        // Notificar a los usuarios del canal
+                                                        let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                                        for nick in nicks {
+                                                            if let Some(user) = state.users.get_mut(&nick) {
+                                                                let mensaje = format!("MODE {} -b {}",
+                                                                    channel_name,
+                                                                    ban_mask_for_timeout); // Aquí también usa la String
+                                                                let _ = user.send_msg_display(&config_clone.name, &mensaje);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        
+                                        let serv_comm = self.serv_comm.read().await;
+                                        let mensaje = format!(":{} {} MODE {} +b {}",
+                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     } else {
                                         // put to applied modes
                                         modes_params_string += " -b ";
@@ -565,6 +618,11 @@ impl super::MainState {
 
                                         ban.remove(&norm_bmask);
                                         chanobj.ban_info.remove(&norm_bmask);
+
+                                        let serv_comm = self.serv_comm.read().await;
+                                        let mensaje = format!(":{} {} MODE {} -b {}",
+                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     }
                                     chanobj.modes.ban = Some(ban);
                                 } else {
@@ -624,6 +682,15 @@ impl super::MainState {
                                 if if_half_op {
                                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                                     let norm_bmask = normalize_sourcemask(bmask);
+
+                                    let (_, duration) = if let Some(idx) = bmask.find('|') {
+                                        let (mask_part, duration_part) = bmask.split_at(idx);
+                                        let duration = duration_part[1..].parse::<u64>().ok();
+                                        (mask_part.to_string(), duration)
+                                    } else {
+                                        (bmask.to_string(), None)
+                                    };
+
                                     if mode_set {
                                         // put to applied modes
                                         modes_params_string += " +B ";
@@ -644,8 +711,41 @@ impl super::MainState {
                                                     .duration_since(UNIX_EPOCH)
                                                     .unwrap()
                                                     .as_secs(),
+                                                expires_at: None,
                                             },
                                         );
+
+                                        if let Some(duration) = duration {
+                                            let channel_name = target.to_string();
+                                            let ban_mask_for_timeout = norm_bmask.clone();
+                                            let state_clone = self.state.clone();
+                                            let config_clone = self.config.clone();
+                    
+                                            tokio::spawn(async move {
+                                                tokio::time::sleep(Duration::from_secs(duration)).await;
+                    
+                                                // Remover el ban global expirado
+                                                let mut state = state_clone.write().await;
+                                                if let Some(channel) = state.channels.get_mut(&channel_name) {
+                                                    if let Some(ban_set) = &mut channel.modes.global_ban {
+                                                        ban_set.remove(&ban_mask_for_timeout);
+                                                        channel.ban_info.remove(&ban_mask_for_timeout);
+                    
+                                                        // Notificar a los usuarios del canal
+                                                        let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                                        for nick in nicks {
+                                                            if let Some(user) = state.users.get_mut(&nick) {
+                                                                let mensaje = format!("MODE {} -B {}",
+                                                                    channel_name,
+                                                                    ban_mask_for_timeout);
+                                                                let _ = user.send_msg_display(&config_clone.name, &mensaje);
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            });
+                                        }
+                                        
                                         let serv_comm = self.serv_comm.read().await;
                                         let mensaje = format!(":{} {} MODE {} +B {}",
                                             self.config.name, conn_state.user_state.source, target, norm_bmask);
@@ -2244,14 +2344,16 @@ mod test {
                             "nick*!*@*".to_string(),
                             BanInfo {
                                 who: "sonny".to_string(),
-                                set_time
+                                set_time,
+                                expires_at: None,
                             }
                         ),
                         (
                             "*digger.com!*@*".to_string(),
                             BanInfo {
                                 who: "sonny".to_string(),
-                                set_time
+                                set_time,
+                                expires_at: None,
                             }
                         ),
                     ]),
@@ -2411,7 +2513,8 @@ mod test {
                         "*digger.com!*@*".to_string(),
                         BanInfo {
                             who: "sonny".to_string(),
-                            set_time
+                            set_time,
+                            expires_at: None,
                         }
                     ),]),
                     channel.ban_info

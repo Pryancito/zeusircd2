@@ -12,6 +12,7 @@ use crate::state::*;
 use futures::stream::StreamExt;
 use tracing::error;
 use std::time::{UNIX_EPOCH, SystemTime};
+use tokio::time::Duration;
 
 #[derive(Clone)]
 pub(crate) struct ServerCommunication {
@@ -238,6 +239,13 @@ impl ServerCommunication {
                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
                     gban.insert(norm_bmask.clone());
+                    let (_, duration) = if let Some(idx) = mask.find('|') {
+                        let (mask_part, duration_part) = mask.split_at(idx);
+                        let duration = duration_part[1..].parse::<u64>().ok();
+                        (mask_part.to_string(), duration)
+                    } else {
+                        (mask.to_string(), None)
+                    };
                     chanobj.ban_info.insert(
                         norm_bmask.clone(),
                         BanInfo {
@@ -246,6 +254,7 @@ impl ServerCommunication {
                                 .duration_since(UNIX_EPOCH)
                                 .unwrap()
                                 .as_secs(),
+                            expires_at: duration,
                         },
                     );
                     chanobj.modes.global_ban = Some(gban);
@@ -261,6 +270,37 @@ impl ServerCommunication {
                         } else {
                             error!("Error poniendo ban global en el canal {}", channel);
                         }
+                    }
+                    if let Some(duration) = duration {
+                        let channel_name = channel.to_string();
+                        let ban_mask_for_timeout = norm_bmask.clone();
+                        let state_clone = self.state.clone();
+
+                        tokio::spawn(async move {
+                            tokio::time::sleep(Duration::from_secs(duration)).await;
+
+                            // Remover el ban global expirado
+                            let mut state = state_clone.write().await;
+                            if let Some(channel) = state.channels.get_mut(&channel_name) {
+                                if let Some(ban_set) = &mut channel.modes.global_ban {
+                                    ban_set.remove(&ban_mask_for_timeout);
+                                    channel.ban_info.remove(&ban_mask_for_timeout);
+
+                                    // Notificar a los usuarios del canal
+                                    let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                    for nick in nicks {
+                                        if let Some(user) = state.users.get_mut(&nick) {
+                                            if user.server != result.get_server() {
+                                                let _ = user.send_msg_display(
+                                                    &result.get_user(),
+                                                    server_message.as_str()
+                                                );
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        });
                     }
                 } else if mode == "-B" {
                     let mut state = self.state.write().await;

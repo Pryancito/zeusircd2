@@ -163,12 +163,28 @@ impl ChannelModes {
         // Check local bans
         let local_banned = self.ban
             .as_ref()
-            .map_or(false, |b| b.iter().any(|b| match_wildcard(b, source)));
+            .map_or(false, |b| b.iter().any(|b| {
+                // Extraer la parte de la máscara sin el tiempo
+                let mask = if let Some(idx) = b.find('|') {
+                    &b[..idx]
+                } else {
+                    b
+                };
+                match_wildcard(mask, source)
+            }));
         
         // Check global bans
         let global_banned = self.global_ban
             .as_ref()
-            .map_or(false, |b| b.iter().any(|b| match_wildcard(b, source)));
+            .map_or(false, |b| b.iter().any(|b| {
+                // Extraer la parte de la máscara sin el tiempo
+                let mask = if let Some(idx) = b.find('|') {
+                    &b[..idx]
+                } else {
+                    b
+                };
+                match_wildcard(mask, source)
+            }));
 
         // User is banned if either local or global ban matches
         (local_banned || global_banned) && 
