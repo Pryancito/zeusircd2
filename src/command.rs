@@ -744,32 +744,14 @@ impl<'a> Command<'a> {
                 if !message.params.is_empty() {
                     if message.params.len() >= 2 {
                         // nickmasks are separated by ','
-                        let nickmasks: Vec<&str> = message.params[1].split(',').collect();
-                        // Eliminar duplicados manteniendo el orden
-                        let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                            .fold(Vec::new(), |mut acc, &x| {
-                                if !acc.contains(&x) {
-                                    acc.push(x);
-                                }
-                                acc
-                            });
                         Ok(WHOIS {
                             target: Some(message.params[0]),
-                            nickmasks: unique_nickmasks,
+                            nickmasks: message.params[1].split(',').collect::<Vec<_>>(),
                         })
                     } else {
-                        let nickmasks: Vec<&str> = message.params[0].split(',').collect();
-                        // Eliminar duplicados manteniendo el orden
-                        let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                            .fold(Vec::new(), |mut acc, &x| {
-                                if !acc.contains(&x) {
-                                    acc.push(x);
-                                }
-                                acc
-                            });
                         Ok(WHOIS {
                             target: None,
-                            nickmasks: unique_nickmasks,
+                            nickmasks: message.params[0].split(',').collect::<Vec<_>>(),
                         })
                     }
                 } else {
