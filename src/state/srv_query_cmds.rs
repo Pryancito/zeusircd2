@@ -445,6 +445,9 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
+        let state = self.state.read().await;
+        let user = state.users.get(&client.to_string());
+        let if_oper = user.unwrap().modes.is_local_oper();
 
         if modes.is_empty() {
             self.feed_msg(
@@ -479,7 +482,7 @@ impl super::MainState {
                     // will be not satisfied.
                     match mchar {
                         'q' => {
-                            if !chum.founder {
+                            if !chum.founder && !if_oper {
                                 self.feed_msg(
                                     &mut conn_state.stream,
                                     ErrChanOpPrivsNeeded482 {
@@ -491,7 +494,7 @@ impl super::MainState {
                             }
                         }
                         'a' => {
-                            if !chum.is_protected() {
+                            if !chum.is_protected() && !if_oper {
                                 self.feed_msg(
                                     &mut conn_state.stream,
                                     ErrChanOpPrivsNeeded482 {
@@ -503,7 +506,7 @@ impl super::MainState {
                             }
                         }
                         'o' | 'h' => {
-                            if !if_op {
+                            if !if_op && !if_oper {
                                 self.feed_msg(
                                     &mut conn_state.stream,
                                     ErrChanOpPrivsNeeded482 {
@@ -515,7 +518,7 @@ impl super::MainState {
                             }
                         }
                         'i' | 'm' | 't' | 'n' | 's' | 'l' | 'k' | 'v' => {
-                            if !if_half_op {
+                            if !if_half_op && !if_oper {
                                 self.feed_msg(
                                     &mut conn_state.stream,
                                     ErrChanOpPrivsNeeded482 {
