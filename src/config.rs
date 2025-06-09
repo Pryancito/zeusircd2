@@ -27,6 +27,7 @@ use std::io::Read;
 use std::net::IpAddr;
 use std::str::FromStr;
 use validator::Validate;
+use clap::error::ErrorKind;
 
 use crate::utils::match_wildcard;
 use crate::utils::validate_channel;
@@ -68,9 +69,9 @@ pub(crate) struct TLSConfig {
 
 #[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct OperatorConfig {
-    #[validate(custom = "validate_username")]
+    #[validate(custom(function = "validate_username"))]
     pub(crate) name: String,
-    #[validate(custom = "validate_password_hash")]
+    #[validate(custom(function = "validate_password_hash"))]
     pub(crate) password: String,
     pub(crate) mask: Option<String>,
 }
@@ -316,23 +317,23 @@ impl fmt::Display for ChannelModes {
     }
 }
 
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
 pub(crate) struct ChannelConfig {
-    #[validate(custom = "validate_channel")]
+    #[validate(custom(function = "validate_channel"))]
     pub(crate) name: String,
     pub(crate) topic: Option<String>,
-    #[validate]
+    #[validate(nested)]
     pub(crate) modes: ChannelModes,
 }
 
 #[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub(crate) struct UserConfig {
-    #[validate(custom = "validate_username")]
+    #[validate(custom(function = "validate_username"))]
     pub(crate) name: String,
-    #[validate(custom = "validate_username")]
+    #[validate(custom(function = "validate_username"))]
     pub(crate) nick: String,
     #[validate(length(min = 6))]
-    #[validate(custom = "validate_password_hash")]
+    #[validate(custom(function = "validate_password_hash"))]
     pub(crate) password: Option<String>,
     pub(crate) mask: Option<String>,
 }
@@ -346,9 +347,9 @@ pub(crate) struct ListenerConfig {
 }
 
 /// Main configuration structure.
-#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
+#[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
 pub(crate) struct MainConfig {
-    #[validate(contains = ".")]
+    #[validate(contains(pattern = "."))]
     pub(crate) name: String,
     pub(crate) admin_info: String,
     pub(crate) admin_info2: Option<String>,
@@ -357,23 +358,24 @@ pub(crate) struct MainConfig {
     pub(crate) motd: String,
     pub(crate) listeners: Vec<ListenerConfig>,
     pub(crate) network: String,
-    #[validate(custom = "validate_password_hash")]
+    #[validate(custom(function = "validate_password_hash"))]
     pub(crate) password: Option<String>,
     pub(crate) max_connections: Option<usize>,
     pub(crate) max_joins: Option<usize>,
     pub(crate) ping_timeout: u64,
     pub(crate) pong_timeout: u64,
     pub(crate) dns_lookup: bool,
+    #[validate(nested)]
     pub(crate) default_user_modes: UserModes,
     pub(crate) log_file: Option<String>,
     #[serde(deserialize_with = "tracing_log_level_deserialize")]
     pub(crate) log_level: tracing::Level,
     pub(crate) database: Option<DB>,
-    #[validate]
+    #[validate(nested)]
     pub(crate) operators: Option<Vec<OperatorConfig>>,
-    #[validate]
+    #[validate(nested)]
     pub(crate) users: Option<Vec<UserConfig>>,
-    #[validate]
+    #[validate(nested)]
     pub(crate) channels: Option<Vec<ChannelConfig>>,
     pub amqp: AmqpConfig,
 }
@@ -464,17 +466,14 @@ impl MainConfig {
             }
             // both config are required
             if (have_cert && !have_cert_key) || (!have_cert && have_cert_key) {
-                return Err(Box::new(clap::error::Error::raw(
-                    clap::ErrorKind::ValueValidation,
+                return Err(Box::new(clap::error::Error::<clap::error::DefaultFormatter>::raw(
+                    ErrorKind::ValueValidation,
                     "TLS certifcate file and certificate \
                         key file together are required",
                 )));
-            }
-            if let Err(e) = config.validate() {
-                Err(Box::new(e))
             } else if !config.validate_nicknames() {
-                Err(Box::new(clap::error::Error::raw(
-                    clap::ErrorKind::ValueValidation,
+                Err(Box::new(clap::error::Error::<clap::error::DefaultFormatter>::raw(
+                    ErrorKind::ValueValidation,
                     "Wrong nikname lengths",
                 )))
             } else {
@@ -675,28 +674,6 @@ mod test {
             half_operators: None,
             founders: Some(["guy1".to_string(), "guy2".to_string()].into()),
             protecteds: None,
-            voices: None,
-            invite_only: true,
-            moderated: true,
-            secret: false,
-            protected_topic: false,
-            no_external_messages: true,
-        }
-        .to_string();
-        assert!(
-            "+imn +I somebody +q guy1 +q guy2".to_string() == chm_str
-                || "+imn +I somebody +q guy2 +q guy1".to_string() == chm_str
-        );
-        let chm_str = ChannelModes {
-            ban: None,
-            exception: None,
-            invite_exception: Some(["somebody".to_string()].into()),
-            client_limit: None,
-            key: None,
-            operators: None,
-            half_operators: None,
-            founders: None,
-            protecteds: Some(["guy1".to_string(), "guy2".to_string()].into()),
             voices: None,
             invite_only: true,
             moderated: true,

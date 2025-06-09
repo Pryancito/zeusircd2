@@ -215,7 +215,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::WebSocketStream(stream) => {
                 match Pin::new(&mut *stream).poll_ready(cx) {
                     Poll::Ready(Ok(())) => {
-                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string())) {
+                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string().into())) {
                             Ok(()) => Poll::Ready(Ok(buf.len())),
                             Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                         }
@@ -241,7 +241,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::SecureWebSocketStream(stream) => {
                 match Pin::new(&mut *stream).poll_ready(cx) {
                     Poll::Ready(Ok(())) => {
-                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string())) {
+                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string().into())) {
                             Ok(()) => Poll::Ready(Ok(buf.len())),
                             Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                         }
@@ -713,12 +713,7 @@ static ARGON2_P_COST: u32 = 1;
 static ARGON2_OUT_LEN: usize = 64;
 
 lazy_static! {
-    static ref ARGON2_SALT: SaltString = SaltString::b64_encode(
-        option_env!("PASSWORD_SALT")
-            .unwrap_or("br8f4efc3F4heecdsdS")
-            .as_bytes()
-    )
-    .unwrap();
+    static ref ARGON2_SALT: SaltString = SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
     static ref ARGON2: Argon2<'static> = Argon2::new(
         argon2::Algorithm::Argon2id,
         argon2::Version::V0x13,
@@ -733,10 +728,9 @@ lazy_static! {
 }
 
 pub(crate) fn argon2_hash_password(password: &str) -> String {
-    ARGON2
-        .hash_password(password.as_bytes(), ARGON2_SALT.as_str())
-        .unwrap()
-        .hash
+    let argon2 = Argon2::default();
+    argon2
+        .hash_password(password.as_bytes(), &*ARGON2_SALT)
         .unwrap()
         .to_string()
 }

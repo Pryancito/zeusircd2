@@ -47,7 +47,8 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
-use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
+use trust_dns_resolver::TokioAsyncResolver;
+use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
 use tokio_tungstenite::accept_async;
 
 use crate::command::*;
@@ -643,43 +644,22 @@ pub(crate) fn initialize_logging(config: &MainConfig) {
 
 #[cfg(feature = "dns_lookup")]
 lazy_static! {
-    static ref DNS_RESOLVER: std::sync::RwLock<Option<Arc::<TokioAsyncResolver>>> =
-        std::sync::RwLock::new(None);
+    static ref RESOLVER: Arc<TokioAsyncResolver> = {
+        Arc::new(TokioAsyncResolver::tokio(
+            ResolverConfig::new(),
+            ResolverOpts::default()
+        ))
+    };
 }
 
 #[cfg(feature = "dns_lookup")]
 fn initialize_dns_resolver() {
-    let mut r = DNS_RESOLVER.write().unwrap();
-    if r.is_none() {
-        *r = Some(Arc::new(
-            {
-                // for windows or linux
-                #[cfg(any(unix, windows))]
-                {
-                    // use the system resolver configuration
-                    TokioAsyncResolver::from_system_conf(TokioHandle)
-                }
-
-                // for other
-                #[cfg(not(any(unix, windows)))]
-                {
-                    // Directly reference the config types
-                    use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
-
-                    // Get a new resolver with the google nameservers as
-                    // the upstream recursive resolvers
-                    TokioAsyncResolver::tokio(ResolverConfig::google(), ResolverOpts::default())
-                }
-            }
-            .expect("failed to create resolver"),
-        ));
-    }
+    // El resolver ya está inicializado por lazy_static
 }
 
 #[cfg(feature = "dns_lookup")]
-pub(self) fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
-    let r = DNS_RESOLVER.read().unwrap();
-    let resolver = (*r).clone().unwrap();
+fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
+    let resolver = RESOLVER.clone();
     tokio::spawn(dns_lookup_process(resolver, sender, ip));
 }
 
@@ -689,25 +669,12 @@ async fn dns_lookup_process(
     sender: oneshot::Sender<Option<String>>,
     ip: IpAddr,
 ) {
-    let r = match resolver.reverse_lookup(ip).await {
-        Ok(lookup) => {
-            if let Some(x) = lookup.iter().next() {
-                let namex = x.to_string();
-                let name = if namex.as_bytes()[namex.len() - 1] == b'.' {
-                    namex[..namex.len() - 1].to_string()
-                } else {
-                    namex
-                };
-                sender.send(Some(name))
-            } else {
-                sender.send(None)
-            }
-        }
-        Err(_) => sender.send(None),
-    };
-    if r.is_err() {
-        error!("Error while sending dns lookup");
-    }
+    let hostname = resolver.reverse_lookup(ip).await.ok().and_then(|r| {
+        r.iter()
+            .next()
+            .map(|n| n.to_string())
+    });
+    let _ = sender.send(hostname);
 }
 
 async fn handle_websocket_connection(
@@ -926,10 +893,12 @@ pub(crate) async fn run_server(
         }
     });
 
+
     let _ = main_state.serv_comm.write().await.connect().await;
 
     let _ = main_state.serv_comm.write().await.start_consuming().await;
 
+    println!("Server Started...");
     Ok((main_state_to_return, handle))
 }
 
