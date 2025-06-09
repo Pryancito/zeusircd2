@@ -165,15 +165,18 @@ impl MainState {
     ) -> Option<ConnState> {
         if let Some(max_conns) = self.config.max_connections {
             // increment counter of connections count.
-            if self.conns_count.fetch_add(1, Ordering::SeqCst) < max_conns {
+            let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
+            if current < max_conns {
+                info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
                 Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
             } else {
                 self.conns_count.fetch_sub(1, Ordering::SeqCst);
-                error!("Too many connections for IP {}", ip_addr);
+                error!("Too many connections for IP {} (max: {})", ip_addr, max_conns);
                 None
             }
         } else {
-            self.conns_count.fetch_add(1, Ordering::SeqCst);
+            let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
+            info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
             Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
         }
     }

@@ -25,7 +25,7 @@ validator = { version = "0.20.0", features = [ "derive" ] }
 bytes = "1.10.1"
 const-table = "0.1.0"
 flagset = "0.4.7"
-argon2 = "0.5.3"
+argon2 = "0.4"
 rpassword = "7.4.0"
 tokio-openssl = { version = "0.6.5", optional = true }
 openssl = { version = "0.10.73", optional = true }
