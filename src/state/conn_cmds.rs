@@ -630,32 +630,37 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
     ) -> Result<(), Box<dyn Error>> {
-        let nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user_channels = {
-            let state = self.state.read().await;
-            state.users.get(nick).unwrap().channels.clone()
-        };
-        conn_state.user_state.quit_reason = "Client Quit".to_string();
-        // notify other users in channels
-        for chname in &user_channels {
-            let state = self.state.read().await;
-            if let Some(channel) = state.channels.get(chname) {
-                for (other_nick, _) in &channel.users {
-                    if other_nick != nick {
-                        if let Some(other_user) = state.users.get(other_nick) {
-                            let _ = other_user.send_msg_display(
-                                &conn_state.user_state.source,
-                                format!("QUIT :{}", conn_state.user_state.quit_reason),
-                            );
+        if let Some(nick) = &conn_state.user_state.nick {
+            let user_channels = {
+                let state = self.state.read().await;
+                if let Some(user) = state.users.get(nick) {
+                    user.channels.clone()
+                } else {
+                    HashSet::new()
+                }
+            };
+            conn_state.user_state.quit_reason = "Client Quit".to_string();
+            // notify other users in channels
+            for chname in &user_channels {
+                let state = self.state.read().await;
+                if let Some(channel) = state.channels.get(chname) {
+                    for (other_nick, _) in &channel.users {
+                        if other_nick != nick {
+                            if let Some(other_user) = state.users.get(other_nick) {
+                                let _ = other_user.send_msg_display(
+                                    &conn_state.user_state.source,
+                                    format!("QUIT :{}", conn_state.user_state.quit_reason),
+                                );
+                            }
                         }
                     }
                 }
             }
-        }
-        // remove user from state
-        {
-            let mut state = self.state.write().await;
-            state.remove_user(nick);
+            // remove user from state
+            {
+                let mut state = self.state.write().await;
+                state.remove_user(nick);
+            }
         }
         Ok(())
     }

@@ -40,7 +40,7 @@ use tokio::task::JoinHandle;
 #[cfg(feature = "tls_openssl")]
 use tokio_openssl::SslStream;
 #[cfg(feature = "tls_rustls")]
-use tokio_rustls::rustls::{Certificate, PrivateKey};
+use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
 #[cfg(feature = "tls_rustls")]
 use tokio_rustls::TlsAcceptor;
 use tokio_stream::StreamExt;
@@ -560,12 +560,15 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                 }
             }
         }
-        // Limpieza de recursos
+        // Asegurarnos de limpiar correctamente el usuario del estado global
         info!(
             "User {} gone from server",
             conn_state.user_state.source,
         );
         main_state.remove_user(&conn_state).await;
+
+        // IMPORTANTE: Decrementar el contador de conexiones activas
+        main_state.conns_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
     }
 }
 
@@ -685,20 +688,15 @@ async fn handle_websocket_connection(
     #[cfg(feature = "tls_rustls")]
     {
         if let Some(tlsconfig) = tls_config {
-            let config = {
-                let certs = rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
-                    .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
-                let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
-                    &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
-                )
-                .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
+            let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(File::open(&tlsconfig.cert_file)?))
+                .map(|certs| certs.into_iter().map(CertificateDer::from).collect())?;
+            let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(File::open(&tlsconfig.cert_key_file)?))
+                .map(|keys| keys.into_iter().map(|k| PrivateKeyDer::from(PrivatePkcs8KeyDer::from(k))).collect())?;
 
-                rustls::ServerConfig::builder()
-                    .with_safe_defaults()
-                    .with_no_client_auth()
-                    .with_single_cert(certs, keys.remove(0))
-                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
-            };
+            let config = rustls::ServerConfig::builder()
+                .with_no_client_auth()
+                .with_single_cert(certs, keys.remove(0))
+                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
             let acceptor = TlsAcceptor::from(Arc::new(config));
             let stream = acceptor.accept(stream).await?;
@@ -750,22 +748,16 @@ pub(crate) async fn run_server(
             let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
             #[cfg(feature = "tls_rustls")]
             {
-                let config = {
-                    let tlsconfig = cloned_tls.unwrap();
-                    let certs =
-                        rustls_pemfile::certs(&mut BufReader::new(File::open(tlsconfig.cert_file)?))
-                            .map(|mut certs| certs.drain(..).map(Certificate).collect())?;
-                    let mut keys: Vec<PrivateKey> = rustls_pemfile::pkcs8_private_keys(
-                        &mut BufReader::new(File::open(tlsconfig.cert_key_file)?),
-                    )
-                    .map(|mut keys| keys.drain(..).map(PrivateKey).collect())?;
+                let tlsconfig = cloned_tls.unwrap();
+                let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(File::open(&tlsconfig.cert_file)?))
+                    .map(|certs| certs.into_iter().map(CertificateDer::from).collect())?;
+                let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(File::open(&tlsconfig.cert_key_file)?))
+                    .map(|keys| keys.into_iter().map(|k| PrivateKeyDer::from(PrivatePkcs8KeyDer::from(k))).collect())?;
 
-                    rustls::ServerConfig::builder()
-                        .with_safe_defaults()
-                        .with_no_client_auth()
-                        .with_single_cert(certs, keys.remove(0))
-                        .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?
-                };
+                let config = rustls::ServerConfig::builder()
+                    .with_no_client_auth()
+                    .with_single_cert(certs, keys.remove(0))
+                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
 
                 let acceptor = TlsAcceptor::from(Arc::new(config));
                 tokio::spawn(async move {
@@ -784,7 +776,7 @@ pub(crate) async fn run_server(
                                 };
                             }
                             Ok(msg) = &mut quit_receiver => {
-                                info!("Server Quit: {}", msg);
+                                info!("Server quit: {}", msg);
                                 do_quit = true;
                             }
                         };
@@ -1026,11 +1018,10 @@ mod test {
     pub(crate) async fn connect_to_test_tls(
         port: u16,
     ) -> Framed<tokio_rustls::client::TlsStream<TcpStream>, IRCLinesCodec> {
-        let mut certs: Vec<Certificate> = rustls_pemfile::certs(&mut BufReader::new(
+        let mut certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(
             File::open(get_cert_file_path()).unwrap(),
         ))
-        .map(|mut certs| certs.drain(..).map(Certificate).collect())
-        .unwrap();
+        .map(|mut certs| certs.drain(..).map(CertificateDer::from).collect())?;
         let dnsname = rustls::client::ServerName::try_from("localhost").unwrap();
 
         let mut cert_store = rustls::RootCertStore { roots: vec![] };

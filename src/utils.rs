@@ -228,7 +228,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::SecureWebSocketStream(stream) => {
                 match Pin::new(&mut *stream).poll_ready(cx) {
                     Poll::Ready(Ok(())) => {
-                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string())) {
+                        match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string().into())) {
                             Ok(()) => Poll::Ready(Ok(buf.len())),
                             Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                         }
