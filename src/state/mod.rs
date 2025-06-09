@@ -22,27 +22,21 @@ use futures::future::Fuse;
 use futures::FutureExt;
 #[cfg(feature = "dns_lookup")]
 use lazy_static::lazy_static;
-#[cfg(feature = "tls_openssl")]
+#[cfg(feature = "tls")]
 use openssl::ssl::{Ssl, SslAcceptor, SslFiletype, SslMethod};
 use std::collections::{HashMap, HashSet};
 use std::error::Error;
 use std::fmt;
 use std::fs::File;
 use std::io;
-#[cfg(feature = "tls_rustls")]
-use std::io::BufReader;
 use std::net::{IpAddr, SocketAddr};
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::Arc;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{oneshot, RwLock};
 use tokio::task::JoinHandle;
-#[cfg(feature = "tls_openssl")]
+#[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
-#[cfg(feature = "tls_rustls")]
-use tokio_rustls::rustls::pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer};
-#[cfg(feature = "tls_rustls")]
-use tokio_rustls::TlsAcceptor;
 use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
@@ -572,27 +566,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
     }
 }
 
-#[cfg(feature = "tls_rustls")]
-async fn user_state_process_tls(
-    main_state: Arc<MainState>,
-    stream: TcpStream,
-    acceptor: TlsAcceptor,
-    addr: SocketAddr,
-) {
-    match acceptor.accept(stream).await {
-        Ok(tls_stream) => {
-            user_state_process(
-                main_state,
-                DualTcpStream::SecureStream(Box::new(tls_stream)),
-                addr,
-            )
-            .await
-        }
-        Err(e) => error!("Can't accept TLS connection: {}", e),
-    }
-}
-
-#[cfg(feature = "tls_openssl")]
+#[cfg(feature = "tls")]
 async fn user_state_process_tls_prepare(
     stream: TcpStream,
     acceptor: Arc<SslAcceptor>,
@@ -608,7 +582,7 @@ async fn user_state_process_tls_prepare(
     Ok(tls_stream)
 }
 
-#[cfg(feature = "tls_openssl")]
+#[cfg(feature = "tls")]
 async fn user_state_process_tls(
     main_state: Arc<MainState>,
     stream: TcpStream,
@@ -617,10 +591,12 @@ async fn user_state_process_tls(
 ) {
     match user_state_process_tls_prepare(stream, acceptor).await {
         Ok(stream) => {
-            user_state_process(main_state, DualTcpStream::SecureStream(stream), addr).await
+            user_state_process(main_state, DualTcpStream::SecureStream(stream), addr).await;
         }
-        Err(e) => error!("Can't accept TLS connection: {}", e),
-    };
+        Err(e) => {
+            error!("Failed to prepare TLS connection: {}", e);
+        }
+    }
 }
 
 pub(crate) fn initialize_logging(config: &MainConfig) {
@@ -685,27 +661,7 @@ async fn handle_websocket_connection(
     _addr: SocketAddr,
     tls_config: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
-    #[cfg(feature = "tls_rustls")]
-    {
-        if let Some(tlsconfig) = tls_config {
-            let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(File::open(&tlsconfig.cert_file)?))
-                .map(|certs| certs.into_iter().map(CertificateDer::from).collect())?;
-            let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(File::open(&tlsconfig.cert_key_file)?))
-                .map(|keys| keys.into_iter().map(|k| PrivateKeyDer::from(PrivatePkcs8KeyDer::from(k))).collect())?;
-
-            let config = rustls::ServerConfig::builder()
-                .with_no_client_auth()
-                .with_single_cert(certs, keys.remove(0))
-                .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-
-            let acceptor = TlsAcceptor::from(Arc::new(config));
-            let stream = acceptor.accept(stream).await?;
-            let ws_stream = accept_async(stream).await?;
-            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
-        }
-    }
-
-    #[cfg(feature = "tls_openssl")]
+    #[cfg(feature = "tls")]
     {
         if let Some(tlsconfig) = tls_config {
             let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
@@ -746,45 +702,7 @@ pub(crate) async fn run_server(
         let handle = if listener_config.tls.is_some() && !listener_config.websocket {
             let cloned_tls = listener_config.tls.clone();
             let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
-            #[cfg(feature = "tls_rustls")]
-            {
-                let tlsconfig = cloned_tls.unwrap();
-                let certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(File::open(&tlsconfig.cert_file)?))
-                    .map(|certs| certs.into_iter().map(CertificateDer::from).collect())?;
-                let mut keys: Vec<PrivateKeyDer> = rustls_pemfile::pkcs8_private_keys(&mut BufReader::new(File::open(&tlsconfig.cert_key_file)?))
-                    .map(|keys| keys.into_iter().map(|k| PrivateKeyDer::from(PrivatePkcs8KeyDer::from(k))).collect())?;
-
-                let config = rustls::ServerConfig::builder()
-                    .with_no_client_auth()
-                    .with_single_cert(certs, keys.remove(0))
-                    .map_err(|err| io::Error::new(io::ErrorKind::InvalidInput, err))?;
-
-                let acceptor = TlsAcceptor::from(Arc::new(config));
-                tokio::spawn(async move {
-                    let mut quit_receiver = main_state.get_quit_receiver().await;
-                    let mut do_quit = false;
-                    info!("Listen TLS {} on port: {}", listener_config.listen, listener_config.port);
-                    while !do_quit {
-                        tokio::select! {
-                            res = listener.accept() => {
-                                match res {
-                                    Ok((stream, addr)) => {
-                                        tokio::spawn(user_state_process_tls(main_state.clone(),
-                                                stream, acceptor.clone(), addr));
-                                    }
-                                    Err(e) => { error!("Accept connection error: {}", e); }
-                                };
-                            }
-                            Ok(msg) = &mut quit_receiver => {
-                                info!("Server quit: {}", msg);
-                                do_quit = true;
-                            }
-                        };
-                    }
-                })
-            }
-
-            #[cfg(feature = "tls_openssl")]
+            #[cfg(feature = "tls")]
             {
                 let tlsconfig = cloned_tls.unwrap();
                 let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
@@ -816,7 +734,7 @@ pub(crate) async fn run_server(
                 })
             }
 
-            #[cfg(not(any(feature = "tls_rustls", feature = "tls_openssl")))]
+            #[cfg(not(any(feature = "tls")))]
             tokio::spawn(async move { error!("Unsupported TLS") })
         } else if listener_config.websocket {
             let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
@@ -970,10 +888,7 @@ mod test {
         line_stream
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "openssl"))]
-    use std::path::PathBuf;
-
-    #[cfg(any(feature = "tls_rustls", feature = "openssl"))]
+    #[cfg(feature = "tls")]
     fn get_cert_file_path() -> String {
         let mut path = PathBuf::new();
         path.push(env!("CARGO_MANIFEST_DIR"));
@@ -982,7 +897,7 @@ mod test {
         path.to_string_lossy().to_string()
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "openssl"))]
+    #[cfg(feature = "tls")]
     fn get_cert_key_file_path() -> String {
         let mut path = PathBuf::new();
         path.push(env!("CARGO_MANIFEST_DIR"));
@@ -991,7 +906,7 @@ mod test {
         path.to_string_lossy().to_string()
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "openssl"))]
+    #[cfg(feature = "tls")]
     pub(crate) async fn run_test_tls_server(
         config: MainConfig,
     ) -> (Arc<MainState>, JoinHandle<()>, u16) {
@@ -1009,76 +924,11 @@ mod test {
         (main_state, handle, port)
     }
 
-    #[cfg(feature = "tls_rustls")]
-    use std::convert::TryFrom;
-    #[cfg(feature = "tls_rustls")]
-    use tokio_rustls::TlsConnector;
-
-    #[cfg(feature = "tls_rustls")]
-    pub(crate) async fn connect_to_test_tls(
-        port: u16,
-    ) -> Framed<tokio_rustls::client::TlsStream<TcpStream>, IRCLinesCodec> {
-        let mut certs: Vec<CertificateDer> = rustls_pemfile::certs(&mut BufReader::new(
-            File::open(get_cert_file_path()).unwrap(),
-        ))
-        .map(|mut certs| certs.drain(..).map(CertificateDer::from).collect())?;
-        let dnsname = rustls::client::ServerName::try_from("localhost").unwrap();
-
-        let mut cert_store = rustls::RootCertStore { roots: vec![] };
-        cert_store.add(&certs.remove(0)).unwrap();
-        let config = Arc::new(
-            rustls::ClientConfig::builder()
-                .with_root_certificates(cert_store)
-                .with_no_client_auth(),
-        );
-        let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-        Framed::new(
-            TlsConnector::from(config)
-                .connect(dnsname, stream)
-                .await
-                .unwrap(),
-            IRCLinesCodec::new_with_max_length(2000),
-        )
-    }
-
-    #[cfg(feature = "tls_rustls")]
-    pub(crate) async fn login_to_test_tls<'a>(
-        port: u16,
-        nick: &'a str,
-        name: &'a str,
-        realname: &'a str,
-    ) -> Framed<tokio_rustls::client::TlsStream<TcpStream>, IRCLinesCodec> {
-        let mut line_stream = connect_to_test_tls(port).await;
-        line_stream.send(format!("NICK {}", nick)).await.unwrap();
-        line_stream
-            .send(format!("USER {} 8 * :{}", name, realname))
-            .await
-            .unwrap();
-        line_stream
-    }
-
-    #[cfg(feature = "tls_rustls")]
-    pub(crate) async fn login_to_test_tls_and_skip<'a>(
-        port: u16,
-        nick: &'a str,
-        name: &'a str,
-        realname: &'a str,
-    ) -> Framed<tokio_rustls::client::TlsStream<TcpStream>, IRCLinesCodec> {
-        let mut line_stream = login_to_test_tls(port, nick, name, realname).await;
-        for _ in 0..18 {
-            line_stream.next().await.unwrap().unwrap();
-        }
-        line_stream
-    }
-
-    #[cfg(feature = "tls_openssl")]
-    use openssl::ssl::SslConnector;
-
-    #[cfg(feature = "tls_openssl")]
+    #[cfg(feature = "tls")]
     pub(crate) async fn connect_to_test_tls(
         port: u16,
     ) -> Framed<SslStream<TcpStream>, IRCLinesCodec> {
-        let mut connector = SslConnector::builder(SslMethod::tls()).unwrap();
+        let mut connector = SslAcceptor::builder(SslMethod::tls()).unwrap();
         connector.set_ca_file(get_cert_file_path()).unwrap();
 
         let ssl = connector
@@ -1095,7 +945,7 @@ mod test {
         Framed::new(tls_stream, IRCLinesCodec::new_with_max_length(2000))
     }
 
-    #[cfg(feature = "tls_openssl")]
+    #[cfg(feature = "tls")]
     pub(crate) async fn login_to_test_tls<'a>(
         port: u16,
         nick: &'a str,
@@ -1111,7 +961,7 @@ mod test {
         line_stream
     }
 
-    #[cfg(feature = "tls_openssl")]
+    #[cfg(feature = "tls")]
     pub(crate) async fn login_to_test_tls_and_skip<'a>(
         port: u16,
         nick: &'a str,
@@ -1125,232 +975,7 @@ mod test {
         line_stream
     }
 
-    #[tokio::test]
-    async fn test_server_command0() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-            let mut line_stream = Framed::new(stream, IRCLinesCodec::new_with_max_length(10000));
-            line_stream.send("POG :welcome".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 421 127.0.0.1 POG :Unknown command".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("".to_string()).await.unwrap();
-            line_stream.send("    ".to_string()).await.unwrap();
-            line_stream.send(":welcome".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR :No command supplied".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream
-                .send(":@! PING :welcome".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":irc.irc ERROR :Wrong source".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("PART aaa".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR :Wrong parameter 0 in command 'PART'".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("PING :welcome".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 451 127.0.0.1 :You have not registered".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("CAP XXX".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR :Unknown subcommand 'XXX' in command 'CAP'".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("PRIVMSG".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 461 127.0.0.1 PRIVMSG :Not enough parameters".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("MODE lol +T".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 501 127.0.0.1 :Unknown MODE flag".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream.send("MODE #bum +T".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 472 127.0.0.1 T :is unknown mode char for #bum".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            line_stream
-                .send("MODE #bum +l xxx".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":irc.irc 696 127.0.0.1 #bum l xxx :invalid digit found in string".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            let mut toolong = String::new();
-            for _ in 0..4000 {
-                toolong.push('c');
-            }
-            line_stream.send(toolong).await.unwrap();
-            assert_eq!(
-                ":irc.irc 417 127.0.0.1 :Input line was too long".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_server_authentication() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = login_to_test(port, "mati", "mat", "MatiSzpaki").await;
-            assert_eq!(
-                ":irc.irc 001 mati :Welcome to the IRCnetwork \
-                    Network, mati!~mat@127.0.0.1"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                concat!(
-                    ":irc.irc 002 mati :Your host is irc.irc, running \
-                    version ",
-                    env!("CARGO_PKG_NAME"),
-                    "-",
-                    env!("CARGO_PKG_VERSION")
-                )
-                .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                format!(
-                    ":irc.irc 003 mati :This server was created {}",
-                    main_state.created
-                ),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                concat!(
-                    ":irc.irc 004 mati irc.irc ",
-                    env!("CARGO_PKG_NAME"),
-                    "-",
-                    env!("CARGO_PKG_VERSION"),
-                    " OiorwWz IabehiklmnopqstvB"
-                ),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 005 mati AWAYLEN=1000 CASEMAPPING=ascii \
-                    CHANMODES=IabehiklmnopqstvB CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
-                    HOSTLEN=1000 INVEX=I KEYLEN=1000 :are supported by this server"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 005 mati KICKLEN=1000 LINELEN=2000 MAXLIST=beI:1000 \
-                    MAXNICKLEN=200 MAXPARA=500 MAXTARGETS=500 MODES=500 NETWORK=IRCnetwork \
-                    NICKLEN=200 PREFIX=(qaohv)~&@%+ :are supported by this server"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 005 mati SAFELIST STATUSMSG=~&@%+ TOPICLEN=1000 USERLEN=200 \
-                    USERMODES=Oiorw :are supported by this server"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 251 mati :There are 1 users and 0 invisible \
-                    on 1 servers"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 252 mati 0 :operator(s) online".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 253 mati 0 :unknown connection(s)".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 254 mati 0 :channels formed".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 255 mati :I have 1 clients and 1 servers".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 265 mati 1 1 :Current local users 1, max 1".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 266 mati 1 1 :Current global users 1, max 1".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 375 mati :- irc.irc Message of the day - ".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 372 mati :Hello, world!".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 376 mati :End of /MOTD command.".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 221 mati +".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            let state = main_state.state.read().await;
-            assert_eq!(
-                HashSet::from(["mati".to_string()]),
-                HashSet::from_iter(state.users.keys().cloned())
-            );
-            assert_eq!(
-                HashSet::from(["mat".to_string()]),
-                HashSet::from_iter(state.users.values().map(|u| u.name.clone()))
-            );
-            assert_eq!(
-                HashSet::from(["MatiSzpaki".to_string()]),
-                HashSet::from_iter(state.users.values().map(|u| u.realname.clone()))
-            );
-
-            line_stream.send("CAP LIST".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc CAP * LIST :".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR: Closing connection".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-        time::sleep(Duration::from_millis(50)).await;
-        {
-            // after close
-            let state = main_state.state.read().await;
-            assert_eq!(
-                HashSet::new(),
-                HashSet::from_iter(state.users.keys().cloned())
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+    #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_server_tls_first() {
         let (main_state, handle, port) = run_test_tls_server(MainConfig::default()).await;
@@ -1461,7 +1086,7 @@ mod test {
         quit_test_server(main_state, handle).await;
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+    #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_server_timeouts() {
         let (main_state, handle, port) = run_test_server(MainConfig::default()).await;

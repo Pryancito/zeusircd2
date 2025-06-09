@@ -27,9 +27,6 @@ const-table = "0.1.0"
 flagset = "0.4.7"
 argon2 = "0.5.3"
 rpassword = "7.4.0"
-tokio-rustls = { version = "0.26.2", optional = true }
-rustls = { version = "0.23.27", optional = true }
-rustls-pemfile = { version = "1.0", optional = true }
 tokio-openssl = { version = "0.6.5", optional = true }
 openssl = { version = "0.10.73", optional = true }
 lazy_static = "1.5.0"
@@ -48,10 +45,7 @@ anyhow = "1.0.98"
 
 [features]
 default = []
-# prefer rustls for almost systems
-tls_rustls = [ "rustls", "tokio-rustls", "rustls-pemfile" ]
-# use openssl if rustls with ring doesn't work - for example old non-SSE2 machines
-tls_openssl = [ "openssl", "tokio-openssl" ]
+tls = [ "openssl", "tokio-openssl" ]
 dns_lookup = [ "trust-dns-resolver" ]
 sqlite3 = ["sqlite"]
 mysql = ["mysql_async"]

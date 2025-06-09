@@ -12,7 +12,7 @@ This server have following features:
 * a password hashing thanks Argon2 password hash.
 * ability to predefine users, operators and channels.
 * a domain name lookup for client hosts.
-* TLS connections support thanks RusTLS and OpenSSL.
+* TLS connections support thanks OpenSSL.
 
 Because it is simple IRC server, unfortunatelly some commands have not been supported like: 
 CONNECT, REHASH, RESTART, AUTHENTICATE. This server should be used to simple
@@ -23,22 +23,12 @@ installation only with local IRC environment.
 A server can be easily build with Cargo package system. Following features can be enabled:
 
 * dns_lookup - enable DNS lookup, it is uses Trust DNS resolver package.
-* tls_rustls - enable TLS connection support.
-* tls_openssl - enable TLS connection support thanks native OpenSSL library.
-
-A tls_openssl should be used in old machines that doesn't support SSE2 instructions.
-A rustls uses 'ring' crate that need newer instruction set in X86 processors.
+* tls - enable TLS connection support thanks native OpenSSL library.
 
 To build server with full support just enter:
 
 ```
-cargo build --release --features=dns_lookup,tls_rustls
-```
-
-or
-
-```
-cargo build --release --features=dns_lookup,tls_openssl
+cargo build --release --features=dns_lookup,tls
 ```
 
 You can build server without DNS lookup and TLS support by using simple command:
