@@ -171,8 +171,7 @@ impl super::MainState {
                 conn_state.caps_negotation = true;
                 if let Some(ref cs) = caps {
                     info!("CAPS REQ for {}: {:?}", conn_state.user_state.source, caps);
-                    let mut new_caps = conn_state.caps;
-                    // accept if all capabilities matches
+                    let mut new_caps = conn_state.caps.clone();
                     if cs.iter().all(|c| new_caps.apply_cap(c)) {
                         conn_state.caps = new_caps;
                         self.feed_msg(
@@ -181,7 +180,6 @@ impl super::MainState {
                         )
                         .await
                     } else {
-                        // NAK
                         self.feed_msg(
                             &mut conn_state.stream,
                             format!("CAP * NAK :{}", cs.join(" ")),
@@ -194,7 +192,10 @@ impl super::MainState {
             }
             CapCommand::END => {
                 conn_state.caps_negotation = false;
-                if !conn_state.user_state.authenticated {
+                // Solo intentar autenticar si tenemos nick y username
+                if !conn_state.user_state.authenticated 
+                   && conn_state.user_state.nick.is_some() 
+                   && conn_state.user_state.name.is_some() {
                     self.authenticate(conn_state).await?;
                 }
                 Ok(())
