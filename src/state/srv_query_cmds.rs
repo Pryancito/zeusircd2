@@ -445,8 +445,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
-        let state = self.state.read().await;
-        let user = state.users.get(&client.to_string());
+        let user = users.get(&client.to_string());
         let if_oper = user.unwrap().modes.is_local_oper();
 
         if modes.is_empty() {

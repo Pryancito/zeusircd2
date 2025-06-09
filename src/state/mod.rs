@@ -699,9 +699,9 @@ pub(crate) async fn run_server(
     let mut handles = Vec::new();
     for listener_config in config.listeners {
         let main_state = main_state.clone();
+        let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
         let handle = if listener_config.tls.is_some() && !listener_config.websocket {
             let cloned_tls = listener_config.tls.clone();
-            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
             #[cfg(feature = "tls")]
             {
                 let tlsconfig = cloned_tls.unwrap();
@@ -737,7 +737,6 @@ pub(crate) async fn run_server(
             #[cfg(not(any(feature = "tls")))]
             tokio::spawn(async move { error!("Unsupported TLS") })
         } else if listener_config.websocket {
-            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
             let tls_config = listener_config.tls.clone();
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
@@ -767,7 +766,6 @@ pub(crate) async fn run_server(
                 }
             })
         } else {
-            let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
                 let mut do_quit = false;
