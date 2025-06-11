@@ -684,25 +684,24 @@ impl<'a> Command<'a> {
                     let mut param_it = message.params.iter();
                     let target = param_it.next().unwrap();
                     if let Some(s) = param_it.next() {
-                        if s.starts_with('+') || s.starts_with('-') {
-                            let mut modestring = *s;
-                            let mut mode_args = vec![];
-                            // collect mode arguments until next mode string.
-                            for s in param_it {
-                                if s.starts_with('+') || s.starts_with('-') {
-                                    // push modestring and mode arguments to modes
-                                    modes.push((modestring, mode_args));
-                                    // next mode string
-                                    modestring = *s;
-                                    mode_args = vec![];
-                                } else {
-                                    mode_args.push(*s);
-                                }
-                            }
-                            modes.push((modestring, mode_args));
-                        } else {
+                        let mut modestring = *s;
+                        if !modestring.starts_with('+') && !modestring.starts_with('-') {
                             return Err(WrongParameter(MODEId, 1));
                         }
+                        let mut mode_args = vec![];
+                        // collect mode arguments until next mode string.
+                        for s in param_it {
+                            if s.starts_with('+') || s.starts_with('-') {
+                                // push modestring and mode arguments to modes
+                                modes.push((modestring, mode_args));
+                                // next mode string
+                                modestring = *s;
+                                mode_args = vec![];
+                            } else {
+                                mode_args.push(*s);
+                            }
+                        }
+                        modes.push((modestring, mode_args));
                     }
                     Ok(MODE { target, modes })
                 } else {
@@ -743,20 +742,38 @@ impl<'a> Command<'a> {
             "WHOIS" => {
                 if !message.params.is_empty() {
                     if message.params.len() >= 2 {
-                        // nickmasks are separated by ','
-                        let nickmasks: Vec<&str> = message.params[1].split(',').collect();
-                        // Eliminar duplicados manteniendo el orden
-                        let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                            .fold(Vec::new(), |mut acc, &x| {
-                                if !acc.contains(&x) {
-                                    acc.push(x);
-                                }
-                                acc
-                            });
-                        Ok(WHOIS {
-                            target: Some(message.params[0]),
-                            nickmasks: unique_nickmasks,
-                        })
+                        // Si el primer parámetro es un nick válido, tratarlo como parte de los nickmasks
+                        if validate_username(message.params[0]).is_ok() {
+                            let mut nickmasks = message.params[0].split(',').collect::<Vec<_>>();
+                            nickmasks.extend(message.params[1].split(','));
+                            // Eliminar duplicados manteniendo el orden
+                            let unique_nickmasks: Vec<&str> = nickmasks.iter()
+                                .fold(Vec::new(), |mut acc, &x| {
+                                    if !acc.contains(&x) {
+                                        acc.push(x);
+                                    }
+                                    acc
+                                });
+                            Ok(WHOIS {
+                                target: None,
+                                nickmasks: unique_nickmasks,
+                            })
+                        } else {
+                            // Si el primer parámetro no es un nick válido, tratarlo como servidor
+                            let nickmasks: Vec<&str> = message.params[1].split(',').collect();
+                            // Eliminar duplicados manteniendo el orden
+                            let unique_nickmasks: Vec<&str> = nickmasks.iter()
+                                .fold(Vec::new(), |mut acc, &x| {
+                                    if !acc.contains(&x) {
+                                        acc.push(x);
+                                    }
+                                    acc
+                                });
+                            Ok(WHOIS {
+                                target: Some(message.params[0]),
+                                nickmasks: unique_nickmasks,
+                            })
+                        }
                     } else {
                         let nickmasks: Vec<&str> = message.params[0].split(',').collect();
                         // Eliminar duplicados manteniendo el orden

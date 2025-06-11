@@ -163,22 +163,21 @@ impl MainState {
         ip_addr: IpAddr,
         stream: Framed<DualTcpStream, IRCLinesCodec>,
     ) -> Option<ConnState> {
+        // Primero verificamos si podemos aceptar más conexiones
         if let Some(max_conns) = self.config.max_connections {
-            // increment counter of connections count.
-            let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
-            if current < max_conns {
-                info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
-                Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
-            } else {
-                self.conns_count.fetch_sub(1, Ordering::SeqCst);
+            let current = self.conns_count.load(Ordering::SeqCst);
+            if current >= max_conns {
                 error!("Too many connections for IP {} (max: {})", ip_addr, max_conns);
-                None
+                return None;
             }
-        } else {
-            let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
-            info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
-            Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
         }
+
+        // Si podemos aceptar la conexión, incrementamos el contador
+        let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
+        info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
+        
+        // Creamos el estado de la conexión
+        Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
     }
 
     pub(crate) async fn remove_user(&self, conn_state: &ConnState) {
@@ -322,13 +321,12 @@ impl MainState {
                                         .await?;
                             }
                             InvalidModeParam{ ref target, modechar, ref param,
-                                    ref description } => {
+                                    ref description } =>
                                 self.feed_msg(&mut conn_state.stream,
                                         ErrInvalidModeParam696{ client,
-                                        target, modechar, param, description }).await?;
-                            }
+                                        target, modechar, param, description }).await?,
                         }
-                        return Err(Box::new(e));
+                        return Ok(()); // Retornar Ok para continuar con el siguiente mensaje
                     }
                 };
 
