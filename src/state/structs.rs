@@ -682,11 +682,27 @@ impl Drop for ConnState {
 async fn ping_client_waker(d: Duration, quit: Arc<AtomicI32>, sender: UnboundedSender<()>) {
     time::sleep(d).await;
     let mut intv = time::interval(d);
+    let mut consecutive_errors = 0;
+    const MAX_CONSECUTIVE_ERRORS: u32 = 3;
+
     while quit.load(Ordering::SeqCst) == 0 {
         intv.tick().await;
-        if quit.load(Ordering::SeqCst) == 0 {
-            if let Err(e) = sender.send(()) {
+        
+        match sender.send(()) {
+            Ok(_) => {
+                consecutive_errors = 0;
+            }
+            Err(e) => {
                 error!("Error enviando ping al cliente: {}", e);
+                consecutive_errors += 1;
+                
+                if consecutive_errors >= MAX_CONSECUTIVE_ERRORS {
+                    error!("Demasiados errores consecutivos enviando ping, terminando waker");
+                    break;
+                }
+                
+                // Esperar un poco antes de reintentar
+                time::sleep(Duration::from_secs(1)).await;
             }
         }
     }

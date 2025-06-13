@@ -242,12 +242,33 @@ impl super::MainState {
                     )
                     .await?;
 
+                    let user_chum = chanobj.users.get(&user_nick).unwrap();
+                    let mut arg = Vec::new();
+                    if user_chum.founder {
+                        arg.push("q");
+                    } if user_chum.protected {
+                        arg.push("a");
+                    } if user_chum.operator {
+                        arg.push("o");
+                    } if user_chum.half_oper {
+                        arg.push("h");
+                    } if user_chum.voice {
+                        arg.push("v");
+                    }
                     // send message to other users in channel
                     for nick in chanobj.users.keys() {
                         if nick != user_nick.as_str() {
                             state.users.get(&nick.clone()).unwrap().send_msg_display(
                                 &conn_state.user_state.source,
                                 join_msg.as_str(),
+                            )?;
+                        }
+                        for mode in &arg {
+                            let msg = format!("MODE {} +{} {}",
+                                chname_str, mode, user_nick);
+                            state.users.get(&nick.clone()).unwrap().send_msg_display(
+                                &self.config.name,
+                                msg.as_str(),
                             )?;
                         }
                     }

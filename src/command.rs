@@ -686,7 +686,7 @@ impl<'a> Command<'a> {
                     if let Some(s) = param_it.next() {
                         let mut modestring = *s;
                         if !modestring.starts_with('+') && !modestring.starts_with('-') {
-                            return Err(WrongParameter(MODEId, 1));
+                            return Err(WrongParameter(STATSId, 0));
                         }
                         let mut mode_args = vec![];
                         // collect mode arguments until next mode string.
