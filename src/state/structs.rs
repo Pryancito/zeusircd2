@@ -151,7 +151,7 @@ impl User {
     
     pub fn cloak_ipv6(&self, ip: &str, config: &Cloacked) -> String {
         let parts: Vec<&str> = ip.split(':').collect();
-        if parts.len() != 8 { return "INVALID".to_string(); }
+        if parts.len() > 8 && parts.len() < 2 { return "INVALID".to_string(); }
     
         let mut hasher = Sha256::new();
         let key1 = &config.key1;
@@ -167,7 +167,7 @@ impl User {
         let alpha = Self::downsample(&hasher.finalize_reset());
     
         // BETA
-        let s = format!("{}:{}:{}:{}:{}:{}:{}:{}:{}", key3, parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], key1);
+        let s = format!("{}:{}:{}:{}:{}:{}:{}:{}:{}:{}", key3, parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], parts[7], key1);
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
         hasher.update(&hash);
