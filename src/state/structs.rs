@@ -22,7 +22,6 @@ use futures::{future::Fuse, future::FutureExt};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::IpAddr;
-use std::ops::Drop;
 use std::sync::atomic::{AtomicI32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -589,14 +588,13 @@ pub(crate) struct ConnState {
     pub(super) caps_negotation: bool, // if caps negotation process
     pub(super) caps: CapState,
     pub(super) quit: Arc<AtomicI32>,
-    pub(super) conns_count: Arc<AtomicUsize>,
 }
 
 impl ConnState {
     pub(super) fn new(
         ip_addr: IpAddr,
         stream: Framed<DualTcpStream, IRCLinesCodec>,
-        conns_count: Arc<AtomicUsize>,
+        _conns_count: Arc<AtomicUsize>,
     ) -> ConnState {
         let (sender, receiver) = unbounded_channel();
         let (ping_sender, ping_receiver) = unbounded_channel();
@@ -625,7 +623,6 @@ impl ConnState {
             caps_negotation: false,
             caps: CapState::default(),
             quit: Arc::new(AtomicI32::new(0)),
-            conns_count,
         }
     }
 
@@ -670,12 +667,6 @@ impl ConnState {
 
     pub(crate) fn is_websocket(&self) -> bool {
         self.stream.get_ref().is_websocket()
-    }
-}
-
-impl Drop for ConnState {
-    fn drop(&mut self) {
-        self.conns_count.fetch_sub(1, Ordering::SeqCst);
     }
 }
 

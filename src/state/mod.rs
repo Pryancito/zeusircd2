@@ -41,8 +41,7 @@ use tokio_stream::StreamExt;
 use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
-use trust_dns_resolver::TokioAsyncResolver;
-use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
 use tokio_tungstenite::accept_async;
 
 use crate::command::*;
@@ -169,13 +168,11 @@ impl MainState {
             if current >= max_conns {
                 error!("Too many connections for IP {} (max: {})", ip_addr, max_conns);
                 return None;
+            } else {
+                let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
+                info!("Nueva conexión desde {} (total: {})", ip_addr, current);
             }
         }
-
-        // Si podemos aceptar la conexión, incrementamos el contador
-        let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
-        info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
-        
         // Creamos el estado de la conexión
         Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
     }
@@ -624,22 +621,43 @@ pub(crate) fn initialize_logging(config: &MainConfig) {
 
 #[cfg(feature = "dns_lookup")]
 lazy_static! {
-    static ref RESOLVER: Arc<TokioAsyncResolver> = {
-        Arc::new(TokioAsyncResolver::tokio(
-            ResolverConfig::new(),
-            ResolverOpts::default()
-        ))
-    };
+    static ref DNS_RESOLVER: std::sync::RwLock<Option<Arc::<TokioAsyncResolver>>> =
+        std::sync::RwLock::new(None);
 }
 
 #[cfg(feature = "dns_lookup")]
 fn initialize_dns_resolver() {
-    // El resolver ya está inicializado por lazy_static
+    let mut r = DNS_RESOLVER.write().unwrap();
+    if r.is_none() {
+        *r = Some(Arc::new(
+            {
+                // for windows or linux
+                #[cfg(any(unix, windows))]
+                {
+                    // use the system resolver configuration
+                    TokioAsyncResolver::from_system_conf(TokioHandle)
+                }
+
+                // for other
+                #[cfg(not(any(unix, windows)))]
+                {
+                    // Directly reference the config types
+                    use trust_dns_resolver::config::{ResolverConfig, ResolverOpts};
+
+                    // Get a new resolver with the google nameservers as
+                    // the upstream recursive resolvers
+                    TokioAsyncResolver::tokio(ResolverConfig::google(), ResolverOpts::default())
+                }
+            }
+            .expect("failed to create resolver"),
+        ));
+    }
 }
 
 #[cfg(feature = "dns_lookup")]
-fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
-    let resolver = RESOLVER.clone();
+pub(self) fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
+    let r = DNS_RESOLVER.read().unwrap();
+    let resolver = (*r).clone().unwrap();
     tokio::spawn(dns_lookup_process(resolver, sender, ip));
 }
 
@@ -649,12 +667,25 @@ async fn dns_lookup_process(
     sender: oneshot::Sender<Option<String>>,
     ip: IpAddr,
 ) {
-    let hostname = resolver.reverse_lookup(ip).await.ok().and_then(|r| {
-        r.iter()
-            .next()
-            .map(|n| n.to_string())
-    });
-    let _ = sender.send(hostname);
+    let r = match resolver.reverse_lookup(ip).await {
+        Ok(lookup) => {
+            if let Some(x) = lookup.iter().next() {
+                let namex = x.to_string();
+                let name = if namex.as_bytes()[namex.len() - 1] == b'.' {
+                    namex[..namex.len() - 1].to_string()
+                } else {
+                    namex
+                };
+                sender.send(Some(name))
+            } else {
+                sender.send(None)
+            }
+        }
+        Err(_) => sender.send(None),
+    };
+    if r.is_err() {
+        error!("Error while sending dns lookup");
+    }
 }
 
 async fn handle_websocket_connection(
