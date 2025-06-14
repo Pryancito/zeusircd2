@@ -491,7 +491,7 @@ impl super::MainState {
                     )
                     .await?;
                 }
-                if arg_user.modes.is_local_oper() {
+                if user.modes.is_local_oper() {
                     self.feed_msg(
                         &mut conn_state.stream,
                         RplWhoIsHost378 {
