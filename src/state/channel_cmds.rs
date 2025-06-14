@@ -213,25 +213,29 @@ impl super::MainState {
                 if *join {
                     let chanobj = state.channels.get(&chname_str.to_string()).unwrap();
                     let join_msg = "JOIN ".to_string() + chname_str;
-                    {
-                        let client = conn_state.user_state.client_name();
-                        self.feed_msg_source(
+                    let client = conn_state.user_state.client_name();
+                    let user = state.users.get(&user_nick).unwrap();
+                    let source = if user.modes.cloacked {
+                        format!("{}!~{}@{}", user_nick, user.name, user.cloack)
+                    } else {
+                        conn_state.user_state.source.clone()
+                    };
+                    self.feed_msg_source(
+                        &mut conn_state.stream,
+                        &source,
+                        join_msg.as_str(),
+                    )
+                    .await?;
+                    if let Some(ref topic) = chanobj.topic {
+                        self.feed_msg(
                             &mut conn_state.stream,
-                            &conn_state.user_state.source,
-                            join_msg.as_str(),
+                            RplTopic332 {
+                                client,
+                                channel: chname_str,
+                                topic: &topic.topic,
+                            },
                         )
                         .await?;
-                        if let Some(ref topic) = chanobj.topic {
-                            self.feed_msg(
-                                &mut conn_state.stream,
-                                RplTopic332 {
-                                    client,
-                                    channel: chname_str,
-                                    topic: &topic.topic,
-                                },
-                            )
-                            .await?;
-                        }
                     }
                     self.send_names_from_channel(
                         conn_state,
@@ -259,7 +263,7 @@ impl super::MainState {
                     for nick in chanobj.users.keys() {
                         if nick != user_nick.as_str() {
                             state.users.get(&nick.clone()).unwrap().send_msg_display(
-                                &conn_state.user_state.source,
+                                &source,
                                 join_msg.as_str(),
                             )?;
                         }
@@ -316,12 +320,18 @@ impl super::MainState {
                     } else {
                         format!("PART {}", channel)
                     };
+                    let user = state.users.get(&user_nick).unwrap();
+                    let source = if user.modes.cloacked {
+                        format!("{}!~{}@{}", user_nick, user.name, user.cloack)
+                    } else {
+                        conn_state.user_state.source.clone()
+                    };
                     for nick in chanobj.users.keys() {
                         state
                             .users
                             .get(&nick.clone())
                             .unwrap()
-                            .send_msg_display(&conn_state.user_state.source, part_msg.as_str())?;
+                            .send_msg_display(&source, part_msg.as_str())?;
                     }
                 }
 

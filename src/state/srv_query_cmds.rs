@@ -1322,13 +1322,11 @@ impl super::MainState {
                                     set_modes_string.push('x');
                                     user.modes.cloacked = true;
                                     user.cloack = user.get_display_hostname(&self.config.cloack);
-                                    user.source = format!("{}!{}@{}", user_nick, user.name, user.cloack);
                                 }
                             } else {
                                 unset_modes_string.push('x');
                                 user.modes.cloacked = false;
                                 user.cloack = user.hostname.clone();
-                                user.source = format!("{}!{}@{}", user_nick, user.name, user.cloack);
                             }
                         }
                         _ => (),
@@ -1355,6 +1353,8 @@ impl super::MainState {
                 .await?;
             }
         } // if modes.len() != 0
+        conn_state.user_state.set_hostname(user.cloack.clone());
+        conn_state.user_state.update_source();
         Ok(())
     }
 
