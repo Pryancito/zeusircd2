@@ -1321,12 +1321,14 @@ impl super::MainState {
                                 if !user.modes.cloacked {
                                     set_modes_string.push('x');
                                     user.modes.cloacked = true;
-                                    user.cloack = user.get_display_hostname(&self.config.cloack);                   
+                                    user.cloack = user.get_display_hostname(&self.config.cloack);
+                                    user.source = format!("{}!{}@{}", user_nick, user.name, user.cloack);
                                 }
                             } else {
                                 unset_modes_string.push('x');
                                 user.modes.cloacked = false;
                                 user.cloack = user.hostname.clone();
+                                user.source = format!("{}!{}@{}", user_nick, user.name, user.cloack);
                             }
                         }
                         _ => (),
