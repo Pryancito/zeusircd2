@@ -78,9 +78,9 @@ secure = false
 cloacked = true
 
 [cloack]
-key1 = "a"
-key2 = "b"
-key3 = "c"
+key1 = "09db977712741f997621bb1e6dda720ef57c0dc789e4d47dde46337d4ba09a98"
+key2 = "abd0f5b700fc5b56d8fd69397ba45b336d24e1ef0ac8db8ac5db9a68247311e1"
+key3 = "7c3776df183841ba7a36dfc31da78e00a06eeddd3d5ee8bad7e43ebc4005f8df"
 prefix = "iRC-Network"
 
 # Optional. List of operators
