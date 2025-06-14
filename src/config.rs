@@ -85,6 +85,7 @@ pub(crate) struct UserModes {
     pub(crate) wallops: bool,
     pub(crate) websocket: bool,
     pub(crate) secure: bool,
+    pub(crate) cloacked: bool,
 }
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
@@ -116,6 +117,9 @@ impl fmt::Display for UserModes {
         }
         if self.secure {
             s.push('z');
+        }
+        if self.cloacked {
+            s.push('x');
         }
         f.write_str(&s)
     }
@@ -377,7 +381,16 @@ pub(crate) struct MainConfig {
     pub(crate) users: Option<Vec<UserConfig>>,
     #[validate(nested)]
     pub(crate) channels: Option<Vec<ChannelConfig>>,
-    pub amqp: AmqpConfig,
+    pub(crate) amqp: AmqpConfig,
+    pub(crate) cloack: Cloacked,
+}
+
+#[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
+pub struct Cloacked {
+    pub key1: String,
+    pub key2: String,
+    pub key3: String,
+    pub prefix: String,
 }
 
 #[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
@@ -525,6 +538,12 @@ impl Default for MainConfig {
                 exchange: "irc_exchange".to_string(),
                 queue: "irc_queue".to_string(),
             },
+            cloack: Cloacked {
+                key1: "aaaaaaaaaabbbbbbbbbbbb".to_string(),
+                key2: "bbbbbbbbbbbbbccccccccc".to_string(),
+                key3: "cccccccccccccccccccfff".to_string(),
+                prefix: "local-".to_string(),
+            },
         }
     }
 }
@@ -565,7 +584,8 @@ mod test {
                 registered: true,
                 wallops: false,
                 websocket: false,
-                secure: false
+                secure: false,
+                cloacked: false
             }
             .to_string()
         );
@@ -578,7 +598,8 @@ mod test {
                 registered: true,
                 wallops: true,
                 websocket: false,
-                secure: false
+                secure: false,
+                cloacked: false
             }
             .to_string()
         );
@@ -591,7 +612,8 @@ mod test {
                 registered: false,
                 wallops: false,
                 websocket: true,
-                secure: true
+                secure: true,
+                cloacked: false
             }
             .to_string()
         );

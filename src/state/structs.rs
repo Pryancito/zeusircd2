@@ -31,6 +31,7 @@ use tokio::sync::oneshot;
 use tokio::time;
 use tokio_util::codec::Framed;
 use tracing::*;
+use sha2::{Sha256, Digest};
 
 use crate::command::*;
 use crate::config::*;
@@ -39,6 +40,7 @@ use crate::utils::*;
 #[derive(Debug, Clone)]
 pub(super) struct User {
     pub(super) hostname: String,
+    pub(super) cloack: String,
     pub(super) sender: UnboundedSender<String>,
     //pub(super) quit_sender: Option<oneshot::Sender<(String, String)>>,
     pub(super) name: String,
@@ -67,8 +69,9 @@ impl User {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        User {
+        let mut user = User {
             hostname: user_state.hostname.clone(),
+            cloack: user_state.hostname.clone(),
             sender,
             name: user_state.name.as_ref().unwrap().clone(),
             realname: user_state.realname.as_ref().unwrap().clone(),
@@ -86,7 +89,14 @@ impl User {
                 signon: now_ts,
             },
             server: config.name.clone(),
+        };
+
+        // Si el modo cloacked está activo por defecto, actualizar el campo cloack
+        if user.modes.cloacked {
+            user.cloack = user.get_display_hostname(&config.cloack);
         }
+
+        user
     }
 
     // update nick - mainly source
@@ -94,11 +104,120 @@ impl User {
         self.source = user_state.source.clone();
     }
 
+    fn downsample(hash: &[u8]) -> u32 {
+        assert!(hash.len() >= 32);
+        let r0 = hash[0..8].iter().fold(0, |a, &b| a ^ b);
+        let r1 = hash[8..16].iter().fold(0, |a, &b| a ^ b);
+        let r2 = hash[16..24].iter().fold(0, |a, &b| a ^ b);
+        let r3 = hash[24..32].iter().fold(0, |a, &b| a ^ b);
+        ((r0 as u32) << 24) | ((r1 as u32) << 16) | ((r2 as u32) << 8) | (r3 as u32)
+    }
+    
+    pub fn cloak_ipv4(&self, ip: &str, config: &Cloacked) -> String {
+        let parts: Vec<&str> = ip.split('.').collect();
+        if parts.len() != 4 { return "INVALID".to_string(); }
+    
+        let mut hasher = Sha256::new();
+        let key1 = &config.key1;
+        let key2 = &config.key2;
+        let key3 = &config.key3;
+
+        // ALPHA
+        let s = format!("{}:{}:{}", key2, ip, key3);
+        hasher.update(s.as_bytes());
+        let mut hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key1.as_bytes());
+        let alpha = Self::downsample(&hasher.finalize_reset());
+    
+        // BETA
+        let s = format!("{}:{}.{}.{}:{}", key3, parts[0], parts[1], parts[2], key1);
+        hasher.update(s.as_bytes());
+        hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key2.as_bytes());
+        let beta = Self::downsample(&hasher.finalize_reset());
+    
+        // GAMMA
+        let s = format!("{}:{}.{}:{}", key1, parts[0], parts[1], key2);
+        hasher.update(s.as_bytes());
+        hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key3.as_bytes());
+        let gamma = Self::downsample(&hasher.finalize_reset());
+    
+        format!("{:X}.{:X}.{:X}.IP", alpha, beta, gamma)
+    }
+    
+    pub fn cloak_ipv6(&self, ip: &str, config: &Cloacked) -> String {
+        let parts: Vec<&str> = ip.split(':').collect();
+        if parts.len() != 8 { return "INVALID".to_string(); }
+    
+        let mut hasher = Sha256::new();
+        let key1 = &config.key1;
+        let key2 = &config.key2;
+        let key3 = &config.key3;
+
+        // ALPHA
+        let s = format!("{}:{}:{}", key2, ip, key3);
+        hasher.update(s.as_bytes());
+        let mut hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key1.as_bytes());
+        let alpha = Self::downsample(&hasher.finalize_reset());
+    
+        // BETA
+        let s = format!("{}:{}:{}:{}:{}:{}:{}:{}:{}", key3, parts[0], parts[1], parts[2], parts[3], parts[4], parts[5], parts[6], key1);
+        hasher.update(s.as_bytes());
+        hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key2.as_bytes());
+        let beta = Self::downsample(&hasher.finalize_reset());
+    
+        // GAMMA
+        let s = format!("{}:{}:{}:{}:{}:{}", key1, parts[0], parts[1], parts[2], parts[3], key2);
+        hasher.update(s.as_bytes());
+        hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key3.as_bytes());
+        let gamma = Self::downsample(&hasher.finalize_reset());
+    
+        format!("{:X}:{:X}:{:X}:IP", alpha, beta, gamma)
+    }
+    
+    pub fn cloak_hostname(&self, host: &str, config: &Cloacked) -> String {
+        let mut hasher = Sha256::new();
+        let key1 = &config.key1;
+        let key2 = &config.key2;
+        let key3 = &config.key3;
+        let prefix = &config.prefix;
+
+        let s = format!("{}:{}:{}", key1, host, key2);
+        hasher.update(s.as_bytes());
+        let hash = hasher.finalize_reset();
+        hasher.update(&hash);
+        hasher.update(key3.as_bytes());
+        let alpha = Self::downsample(&hasher.finalize_reset());
+    
+        // Busca el primer punto seguido de letra (como UnrealIRCd)
+        if let Some(idx) = host.find('.') {
+            let rest = &host[idx+1..];
+            format!("{}-{:X}.{}", prefix, alpha, rest)
+        } else {
+            format!("{}-{:X}", prefix, alpha)
+        }
+    }
+
     // update nick - mainly source
     #[cfg(feature = "dns_lookup")]
-    pub(super) fn update_hostname(&mut self, user_state: &ConnUserState) {
+    pub(super) fn update_hostname(&mut self, user_state: &ConnUserState, config: &Cloacked) {
         self.hostname = user_state.hostname.clone();
         self.source = user_state.source.clone();
+        if self.modes.cloacked {
+            self.cloack = self.get_display_hostname(config);
+        } else {
+            self.cloack = self.hostname.clone();
+        }
     }
 
     pub(super) fn send_message(
@@ -115,6 +234,58 @@ impl User {
         t: T,
     ) -> Result<(), SendError<String>> {
         self.sender.send(format!(":{} {}", source, t))
+    }
+
+    pub(super) fn get_display_hostname(&self, config: &Cloacked) -> String {
+        if self.modes.cloacked {
+            // Función auxiliar para verificar si una cadena es una IP
+            fn is_ip(s: &str) -> bool {
+                // Verificar si es IPv4 (formato x.x.x.x)
+                if s.split('.').count() == 4 {
+                    return s.split('.').all(|part| {
+                        part.parse::<u8>().is_ok()
+                    });
+                }
+                // Verificar si es IPv6 (contiene :)
+                s.contains(':')
+            }
+
+            // Función auxiliar para verificar si parece un hostname de IP
+            fn looks_like_ip_hostname(s: &str) -> bool {
+                let parts: Vec<&str> = s.split('.').collect();
+                if parts.len() < 2 {
+                    return false;
+                }
+                
+                // Verificar si comienza con "ip" o "ipv4" o "ipv6"
+                let first_part = parts[0].to_lowercase();
+                if first_part.starts_with("ip") {
+                    return true;
+                }
+
+                // Verificar si alguna parte parece una IP
+                parts.iter().any(|part| is_ip(part))
+            }
+
+            // Determinar el tipo de hostname y aplicar el cloak apropiado
+            if is_ip(&self.hostname) {
+                if self.hostname.contains(':') {
+                    // Es una IPv6 directa
+                    self.cloak_ipv6(&self.hostname, config)
+                } else {
+                    // Es una IPv4 directa
+                    self.cloak_ipv4(&self.hostname, config)
+                }
+            } else if looks_like_ip_hostname(&self.hostname) {
+                // Es un hostname que parece contener una IP
+                self.cloak_hostname(&self.hostname, config)
+            } else {
+                // Es un hostname normal
+                self.cloak_hostname(&self.hostname, config)
+            }
+        } else {
+            self.hostname.clone()
+        }
     }
 }
 

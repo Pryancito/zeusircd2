@@ -74,6 +74,14 @@ wallops = false
 websocket = false
 # Secure connection mode.
 secure = false
+# Hide hostname from others ( cloacked host )
+cloacked = true
+
+[cloack]
+key1 = "a"
+key2 = "b"
+key3 = "c"
+prefix = "iRC-Network"
 
 # Optional. List of operators
 [[operators]]

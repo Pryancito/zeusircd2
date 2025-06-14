@@ -446,7 +446,7 @@ impl super::MainState {
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
         let user = users.get(&client.to_string());
-        let if_oper = user.unwrap().modes.is_local_oper();
+        let if_oper = user.as_ref().unwrap().modes.is_local_oper();
 
         if modes.is_empty() {
             self.feed_msg(
@@ -1316,6 +1316,19 @@ impl super::MainState {
                                 }
                             }
                         }
+                        'x' => {
+                            if mode_set {
+                                if !user.modes.cloacked {
+                                    set_modes_string.push('x');
+                                    user.modes.cloacked = true;
+                                    user.cloack = user.get_display_hostname(&self.config.cloack);                   
+                                }
+                            } else {
+                                unset_modes_string.push('x');
+                                user.modes.cloacked = false;
+                                user.cloack = user.hostname.clone();
+                            }
+                        }
                         _ => (),
                     }
                 }
@@ -1392,23 +1405,16 @@ impl super::MainState {
                 .await?;
             }
         } else {
-            // user
-            if user_nick == target {
-                self.process_mode_user(conn_state, state, target, modes)
-                    .await?;
-            } else if state.users.contains_key(target) {
-                self.feed_msg(&mut conn_state.stream, ErrUsersDontMatch502 { client })
-                    .await?;
-            } else {
+            // user mode
+            if target != user_nick {
                 self.feed_msg(
                     &mut conn_state.stream,
-                    ErrNoSuchNick401 {
-                        client,
-                        nick: target,
-                    },
+                    ErrUsersDontMatch502 { client },
                 )
                 .await?;
+                return Ok(());
             }
+            self.process_mode_user(conn_state, state, target, modes).await?;
         }
         Ok(())
     }
@@ -2971,3 +2977,4 @@ mod test {
         quit_test_server(main_state, handle).await;
     }
 }
+

@@ -274,12 +274,11 @@ impl super::MainState {
     pub(super) async fn send_who_info<'a>(
         &self,
         conn_state: &mut ConnState,
-        channel: Option<(&'a str, &ChannelUserModes)>,
         user_nick: &'a str,
         user: &User,
-        cmd_user: &User,
+        channel: Option<(&'a str, &ChannelUserModes)>,
     ) -> Result<(), Box<dyn Error>> {
-        if !user.modes.invisible || !user.channels.is_disjoint(&cmd_user.channels) {
+        if !user.modes.invisible || !user.channels.is_disjoint(&user.channels) {
             let client = conn_state.user_state.client_name();
             let mut flags = String::new();
             // if user away
@@ -301,7 +300,7 @@ impl super::MainState {
                     client,
                     channel: channel.map(|(c, _)| c).unwrap_or("*"),
                     username: &user.name,
-                    host: &user.hostname,
+                    host: &user.get_display_hostname(&self.config.cloack),
                     server: &self.config.name,
                     nick: user_nick,
                     flags: &flags,
@@ -320,8 +319,6 @@ impl super::MainState {
         mask: &'a str,
     ) -> Result<(), Box<dyn Error>> {
         let state = self.state.read().await;
-        let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
 
         if mask.contains('*') || mask.contains('?') {
             // if wilcards
@@ -330,7 +327,7 @@ impl super::MainState {
                     || match_wildcard(mask, &u.source)
                     || match_wildcard(mask, &u.realname)
                 {
-                    self.send_who_info(conn_state, None, unick, u, user).await?;
+                    self.send_who_info(conn_state, unick, u, None).await?;
                 }
             }
         } else if validate_channel(mask).is_ok() {
@@ -339,17 +336,16 @@ impl super::MainState {
                 for (u, chum) in &channel.users {
                     self.send_who_info(
                         conn_state,
-                        Some((mask, chum)),
                         u,
                         state.users.get(u).unwrap(),
-                        user,
+                        Some((mask, chum)),
                     )
                     .await?;
                 }
             }
         } else if validate_username(mask).is_ok() {
             if let Some(arg_user) = state.users.get(mask) {
-                self.send_who_info(conn_state, None, mask, arg_user, user)
+                self.send_who_info(conn_state, mask, arg_user, None)
                     .await?;
             }
         }
@@ -362,55 +358,55 @@ impl super::MainState {
     pub(super) async fn process_whois<'a>(
         &self,
         conn_state: &mut ConnState,
-        target: Option<&'a str>,
         nickmasks: Vec<&'a str>,
     ) -> Result<(), Box<dyn Error>> {
         let client = conn_state.user_state.client_name();
-
-        if target.is_some() {
-            self.feed_msg(
-                &mut conn_state.stream,
-                ErrUnknownError400 {
-                    client,
-                    command: "WHOIS",
-                    subcommand: None,
-                    info: "Server unsupported",
-                },
-            )
-            .await?;
-        } else {
-            let state = self.state.read().await;
-            let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-            let user = state.users.get(user_nick).unwrap();
-
-            let mut nicks = HashSet::<String>::new();
-            let mut real_nickmasks = vec![];
-
-            // collect real nickmasks (wildcards) and nicks
-            nickmasks.iter().for_each(|nickmask| {
-                if nickmask.contains('*') || nickmask.contains('?') {
-                    // wildcard
-                    real_nickmasks.push(nickmask);
-                } else {
-                    // Buscar el nick ignorando mayúsculas/minúsculas
-                    let found_nick = state.users.keys().find(|&k| k.eq_ignore_ascii_case(nickmask));
-                    if let Some(nick) = found_nick {
-                        nicks.insert(nick.to_string());
-                    }
-                }
-            });
-
-            if !real_nickmasks.is_empty() {
-                // if filter users by using real nickmasks and insert to nicks
-                state.users.keys().for_each(|nick| {
-                    if real_nickmasks.iter().any(|mask| match_wildcard(mask, nick)) {
-                        nicks.insert(nick.to_string());
-                    }
-                });
+        let state = self.state.read().await;
+        
+        // Obtener el nick del usuario actual de forma segura
+        let current_nick = match conn_state.user_state.nick.as_ref() {
+            Some(nick) => nick,
+            None => {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrNotRegistered451 { client },
+                ).await?;
+                return Ok(());
             }
+        };
 
+        // Obtener el usuario actual de forma segura
+        let user = match state.users.get(&current_nick.to_string()) {
+            Some(u) => u,
+            None => {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrNotRegistered451 { client },
+                ).await?;
+                return Ok(());
+            }
+        };
+
+        for nicks in nickmasks.chunks(20) {
+            let nicks: Vec<_> = nicks.iter().map(|x| x.to_string()).collect();
             for nick in nicks {
-                let arg_user = state.users.get(&nick).unwrap();
+                // Buscar el usuario ignorando mayúsculas/minúsculas
+                let arg_user = match state.users.iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(&nick))
+                    .map(|(_, v)| v) {
+                    Some(u) => u,
+                    None => {
+                        self.feed_msg(
+                            &mut conn_state.stream,
+                            ErrNoSuchNick401 {
+                                client,
+                                nick: &nick,
+                            },
+                        ).await?;
+                        continue;
+                    }
+                };
+                
                 if arg_user.modes.invisible && arg_user.channels.is_disjoint(&user.channels) {
                     continue;
                 }
@@ -431,7 +427,7 @@ impl super::MainState {
                         client,
                         nick: &nick,
                         username: &arg_user.name,
-                        host: &arg_user.hostname,
+                        host: &arg_user.get_display_hostname(&self.config.cloack),
                         realname: &arg_user.realname,
                     },
                 )
@@ -457,38 +453,64 @@ impl super::MainState {
                     .await?;
                 }
                 // channels
-                let channel_replies = arg_user
-                    .channels
-                    .iter()
-                    .filter_map(|chname| {
-                        let ch = state.channels.get(chname).unwrap();
-                        if !ch.modes.secret {
-                            // put channel only if not secret
-                            Some(WhoIsChannelStruct {
-                                prefix: Some(
-                                    ch.users.get(&nick).unwrap().to_string(&conn_state.caps),
-                                ),
-                                channel: chname,
-                            })
-                        } else {
-                            None
+                let mut chans = Vec::new();
+                for chan in &arg_user.channels {
+                    if let Some(channel) = state.channels.get(chan) {
+                        let mut prefix = None;
+                        if let Some(chum) = channel.users.get(&nick) {
+                            let p = chum.to_string(&conn_state.caps);
+                            if !p.is_empty() {
+                                prefix = Some(p);
+                            }
                         }
-                    })
-                    .collect::<Vec<_>>();
-
-                // divide channel replies by chunks
-                for chr_chunk in channel_replies.chunks(30) {
+                        chans.push(crate::reply::WhoIsChannelStruct {
+                            prefix,
+                            channel: chan,
+                        });
+                    }
+                }
+                if !chans.is_empty() {
                     self.feed_msg(
                         &mut conn_state.stream,
                         RplWhoIsChannels319 {
                             client,
                             nick: &nick,
-                            channels: chr_chunk,
+                            channels: &chans,
                         },
                     )
                     .await?;
                 }
-
+                if arg_user.away.is_some() {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplAway301 {
+                            client,
+                            nick: &nick,
+                            message: arg_user.away.as_ref().unwrap(),
+                        },
+                    )
+                    .await?;
+                }
+                if arg_user.modes.is_local_oper() {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplWhoIsHost378 {
+                            client,
+                            nick: &nick,
+                            host_info: &arg_user.get_display_hostname(&self.config.cloack),
+                        },
+                    )
+                    .await?;
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplWhoIsModes379 {
+                            client,
+                            nick: &nick,
+                            modes: &arg_user.modes.to_string(),
+                        },
+                    )
+                    .await?;
+                }
                 self.feed_msg(
                     &mut conn_state.stream,
                     RplwhoIsIdle317 {
@@ -503,26 +525,6 @@ impl super::MainState {
                     },
                 )
                 .await?;
-                if arg_user.modes.is_local_oper() {
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplWhoIsHost378 {
-                            client,
-                            nick: &nick,
-                            host_info: &arg_user.hostname,
-                        },
-                    )
-                    .await?;
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplWhoIsModes379 {
-                            client,
-                            nick: &nick,
-                            modes: &arg_user.modes.to_string(),
-                        },
-                    )
-                    .await?;
-                }
                 // if you connected through TLS connection, then server is working with TLS.
                 // then all users is using secure connection.
                 if conn_state.is_secure() {
@@ -792,7 +794,7 @@ impl super::MainState {
                     let away = if user.away.is_some() { '-' } else { '+' };
                     format!(
                         "{}{}={}~{}@{}",
-                        nick, asterisk, away, user.name, user.hostname
+                        nick, asterisk, away, user.name, user.get_display_hostname(&self.config.cloack)
                     )
                 })
                 .collect::<Vec<_>>();

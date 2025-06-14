@@ -392,7 +392,7 @@ impl super::MainState {
                                 "-",
                                 env!("CARGO_PKG_VERSION")
                             ),
-                            avail_user_modes: "OiorwWz",
+                            avail_user_modes: "OiorwWzx",
                             avail_chmodes: "IabehiklmnopqstvB",
                             avail_chmodes_with_params: None,
                         },
@@ -1144,7 +1144,8 @@ mod test {
             oper: false,
             wallops: false,
             websocket: true,
-            secure: true
+            secure: true,
+            cloacked: false
         };
         let (main_state, handle, port) = run_test_server(config).await;
 
