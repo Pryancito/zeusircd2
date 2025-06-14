@@ -278,7 +278,12 @@ impl User {
                 }
             } else if looks_like_ip_hostname(&self.hostname) {
                 // Es un hostname que parece contener una IP
-                self.cloak_hostname(&self.hostname, config)
+                if self.hostname.contains(':') {
+                    // Si contiene ':', probablemente es un hostname de IPv6
+                    self.cloak_ipv6(&self.hostname, config)
+                } else {
+                    self.cloak_hostname(&self.hostname, config)
+                }
             } else {
                 // Es un hostname normal
                 self.cloak_hostname(&self.hostname, config)

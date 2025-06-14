@@ -497,7 +497,7 @@ impl super::MainState {
                         RplWhoIsHost378 {
                             client,
                             nick: &nick,
-                            host_info: &arg_user.get_display_hostname(&self.config.cloack),
+                            host_info: &arg_user.hostname.to_string(),
                         },
                     )
                     .await?;
