@@ -42,7 +42,8 @@ use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
-use tokio_tungstenite::accept_async;
+use tokio::io::{AsyncRead, AsyncWrite};
+use tokio_tungstenite::WebSocketStream;
 
 use crate::command::*;
 use crate::config::*;
@@ -710,14 +711,25 @@ async fn handle_websocket_connection(
             use std::pin::Pin;
             Pin::new(&mut tls_stream).accept().await?;
             
-            let ws_stream = accept_async(tls_stream).await?;
+            let ws_stream = accept_async_with_config(tls_stream).await?;
             return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
         }
     }
 
     // Si no hay configuración TLS o no está habilitado, usamos WebSocket normal
-    let ws_stream = accept_async(stream).await?;
+    let ws_stream = accept_async_with_config(stream).await?;
     Ok(DualTcpStream::WebSocketStream(ws_stream))
+}
+
+// Función auxiliar para configurar el handshake de WebSocket
+async fn accept_async_with_config<S>(
+    stream: S,
+) -> Result<WebSocketStream<S>, Box<dyn Error + Send + Sync>>
+where
+    S: AsyncRead + AsyncWrite + Unpin,
+{
+    let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+    Ok(ws_stream)
 }
 
 // main routine to run server
