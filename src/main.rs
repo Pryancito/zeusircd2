@@ -45,6 +45,7 @@ pub struct DBState {
     pub channel_db: Arc<Mutex<Box<dyn ChannelDatabase + Send + Sync>>>,
 }
 
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
 impl DBState {
     pub(crate) async fn new(config: &MainConfig) -> Self {
         let db_config_option = &config.database;
@@ -122,6 +123,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
         println!("Password Hash: {}", argon2_hash_password(&password));
     } else {
         let config = MainConfig::new(cli)?;
+        #[cfg(any(feature = "mysql", feature = "sqlite"))]
         let _ = DBState::new(&config).await;
         initialize_logging(&config);
         let (_, handle) = run_server(config).await?;

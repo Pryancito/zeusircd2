@@ -491,7 +491,7 @@ impl super::MainState {
                     )
                     .await?;
                 }
-                if user.modes.is_local_oper() {
+                if user.modes.is_local_oper() || client == nick {
                     self.feed_msg(
                         &mut conn_state.stream,
                         RplWhoIsHost378 {

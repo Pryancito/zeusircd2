@@ -416,6 +416,7 @@ pub struct ServMessage {
     text: String,
 }
 
+#[allow(dead_code)]
 #[derive(Clone)]
 pub struct ServerUser {
     nick: String,
