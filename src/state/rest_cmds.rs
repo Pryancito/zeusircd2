@@ -300,7 +300,7 @@ impl super::MainState {
                     client,
                     channel: channel.map(|(c, _)| c).unwrap_or("*"),
                     username: &user.name,
-                    host: &user.get_display_hostname(&self.config.cloack),
+                    host: &user.cloack,
                     server: &self.config.name,
                     nick: user_nick,
                     flags: &flags,
@@ -427,7 +427,7 @@ impl super::MainState {
                         client,
                         nick: &nick,
                         username: &arg_user.name,
-                        host: &arg_user.get_display_hostname(&self.config.cloack),
+                        host: &arg_user.cloack,
                         realname: &arg_user.realname,
                     },
                 )
@@ -794,7 +794,7 @@ impl super::MainState {
                     let away = if user.away.is_some() { '-' } else { '+' };
                     format!(
                         "{}{}={}~{}@{}",
-                        nick, asterisk, away, user.name, user.get_display_hostname(&self.config.cloack)
+                        nick, asterisk, away, user.name, user.cloack
                     )
                 })
                 .collect::<Vec<_>>();

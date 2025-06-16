@@ -146,7 +146,7 @@ impl User {
         hasher.update(key3.as_bytes());
         let gamma = Self::downsample(&hasher.finalize_reset());
     
-        format!("{:X}.{:X}.{:X}.IP", alpha, beta, gamma)
+        format!("{:X}.{:X}.{:X}.IPv4", alpha, beta, gamma)
     }
     
     pub fn cloak_ipv6(&self, ip: &str, config: &Cloacked) -> String {
@@ -196,7 +196,7 @@ impl User {
         hasher.update(key3.as_bytes());
         let gamma = Self::downsample(&hasher.finalize_reset());
     
-        format!("{:X}:{:X}:{:X}:IP", alpha, beta, gamma)
+        format!("{:X}:{:X}:{:X}:IPv6", alpha, beta, gamma)
     }
     
     pub fn cloak_hostname(&self, host: &str, config: &Cloacked) -> String {
@@ -687,6 +687,7 @@ pub(crate) struct ConnUserState {
     pub(super) authenticated: bool,
     pub(super) registered: bool,
     pub(super) quit_reason: String,
+    pub(super) cloack: String,
 }
 
 impl ConnUserState {
@@ -704,6 +705,7 @@ impl ConnUserState {
             authenticated: false,
             registered: false,
             quit_reason: String::new(),
+            cloack: ip_addr.to_string(),
         }
     }
 
@@ -729,7 +731,7 @@ impl ConnUserState {
             s.push_str(name);
         }
         s.push('@');
-        s.push_str(&self.hostname);
+        s.push_str(&self.cloack);
         self.source = s;
     }
 
@@ -1056,6 +1058,7 @@ mod test {
             authenticated: true,
             registered: true,
             quit_reason: String::new(),
+            cloack: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1630,6 +1633,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1647,6 +1651,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1664,6 +1669,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1682,6 +1688,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1699,6 +1706,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1716,6 +1724,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
+                cloack: String::new(),
             },
             cus
         );
@@ -1806,6 +1815,7 @@ mod test {
             authenticated: true,
             registered: true,
             quit_reason: String::new(),
+            cloack: String::new(),
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
