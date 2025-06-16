@@ -715,29 +715,41 @@ async fn handle_websocket_connection(
             config.max_message_size = Some(1024 * 1024); // 1MB max message size
             config.accept_unmasked_frames = true;
             
-            // Configurar el handshake con los protocolos soportados
-            let ws_stream = tokio_tungstenite::accept_async_with_config(
-                tls_stream,
-                Some(config)
-            ).await?;
-            
-            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
+            // Verificar el handshake de WebSocket
+            match tokio_tungstenite::accept_async_with_config(tls_stream, Some(config)).await {
+                Ok(ws_stream) => Ok(DualTcpStream::SecureWebSocketStream(ws_stream)),
+                Err(e) => {
+                    error!("Error en handshake de WebSocket: {}", e);
+                    Err(Box::new(e))
+                }
+            }
+        } else {
+            // Si no hay TLS configurado, intentar WebSocket normal
+            handle_plain_websocket(stream).await
         }
     }
+    #[cfg(not(feature = "tls"))]
+    {
+        handle_plain_websocket(stream).await
+    }
+}
 
-    // Si no hay configuración TLS o no está habilitado, usamos WebSocket normal
+// Función auxiliar para manejar conexiones WebSocket sin TLS
+async fn handle_plain_websocket(
+    stream: TcpStream,
+) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
     let mut config = WebSocketConfig::default();
     config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
     config.max_message_size = Some(1024 * 1024); // 1MB max message size
     config.accept_unmasked_frames = true;
     
-    // Configurar el handshake con los protocolos soportados
-    let ws_stream = tokio_tungstenite::accept_async_with_config(
-        stream,
-        Some(config)
-    ).await?;
-    
-    Ok(DualTcpStream::WebSocketStream(ws_stream))
+    match tokio_tungstenite::accept_async_with_config(stream, Some(config)).await {
+        Ok(ws_stream) => Ok(DualTcpStream::WebSocketStream(ws_stream)),
+        Err(e) => {
+            error!("Error en handshake de WebSocket: {}", e);
+            Err(Box::new(e))
+        }
+    }
 }
 
 // main routine to run server
@@ -795,7 +807,7 @@ pub(crate) async fn run_server(
             let tls_config = listener_config.tls.clone();
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
-                info!("Listen Secure Websocket {} on port: {}", listener_config.listen, listener_config.port);
+                info!("Listen Websocket {} on port: {}", listener_config.listen, listener_config.port);
                 loop {
                     tokio::select! {
                         res = listener.accept() => {
