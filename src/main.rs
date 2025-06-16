@@ -29,6 +29,7 @@ mod database;
 use clap::Parser;
 use rpassword::prompt_password;
 use std::error::Error;
+use tracing::error;
 
 use command::*;
 use config::*;
@@ -130,9 +131,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
         #[cfg(any(feature = "mysql", feature = "sqlite"))]
         let _ = DBState::new(&config).await;
         initialize_logging(&config);
-        let (_, handle) = run_server(config).await?;
+        let (_, handles) = run_server(config).await?;
         // and await for end
-        handle.await?;
+        for handle in handles {
+            if let Err(e) = handle.await {
+                error!("Error en handles: {}", e);
+            }
+        }
     }
     Ok(())
 }

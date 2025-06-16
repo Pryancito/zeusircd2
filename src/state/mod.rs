@@ -723,7 +723,7 @@ async fn handle_websocket_connection(
 // main routine to run server
 pub(crate) async fn run_server(
     config: MainConfig,
-) -> Result<(Arc<MainState>, JoinHandle<()>), Box<dyn Error>> {
+) -> Result<(Arc<MainState>, Vec<JoinHandle<()>>), Box<dyn Error>> {
     #[cfg(feature = "dns_lookup")]
     if config.dns_lookup {
         initialize_dns_resolver();
@@ -825,22 +825,13 @@ pub(crate) async fn run_server(
         handles.push(handle);
     }
 
-    // Modificamos el handle principal para manejar todos los handles de los listeners
-    let handle = tokio::spawn(async move {
-        for handle in handles {
-            if let Err(e) = handle.await {
-                error!("Error en listener: {}", e);
-            }
-        }
-    });
-
     #[cfg(feature = "amqp")]
     let _ = main_state.serv_comm.write().await.connect().await;
     #[cfg(feature = "amqp")]
     let _ = main_state.serv_comm.write().await.start_consuming().await;
 
     println!("Server Started...");
-    Ok((main_state_to_return, handle))
+    Ok((main_state_to_return, handles))
 }
 
 #[cfg(test)]
