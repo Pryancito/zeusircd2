@@ -390,10 +390,10 @@ impl super::MainState {
 
         for nicks in nickmasks.chunks(20) {
             let nicks: Vec<_> = nicks.iter().map(|x| x.to_string()).collect();
-            for nick in nicks {
+            for nick in &nicks {
                 // Buscar el usuario ignorando mayúsculas/minúsculas
                 let arg_user = match state.users.iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(&nick))
+                    .find(|(k, _)| k.eq_ignore_ascii_case(nick))
                     .map(|(_, v)| v) {
                     Some(u) => u,
                     None => {
@@ -401,7 +401,7 @@ impl super::MainState {
                             &mut conn_state.stream,
                             ErrNoSuchNick401 {
                                 client,
-                                nick: &nick,
+                                nick,
                             },
                         ).await?;
                         continue;
@@ -417,7 +417,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsRegNick307 {
                             client,
-                            nick: &nick,
+                            nick,
                         },
                     )
                     .await?;
@@ -426,7 +426,7 @@ impl super::MainState {
                     &mut conn_state.stream,
                     RplWhoIsUser311 {
                         client,
-                        nick: &nick,
+                        nick,
                         username: &arg_user.name,
                         host: &arg_user.cloack,
                         realname: &arg_user.realname,
@@ -437,7 +437,7 @@ impl super::MainState {
                     &mut conn_state.stream,
                     RplWhoIsServer312 {
                         client,
-                        nick: &nick,
+                        nick,
                         server: &self.config.name,
                         server_info: &self.config.info,
                     },
@@ -448,7 +448,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsOperator313 {
                             client,
-                            nick: &nick,
+                            nick,
                         },
                     )
                     .await?;
@@ -458,7 +458,7 @@ impl super::MainState {
                 for chan in &arg_user.channels {
                     if let Some(channel) = state.channels.get(chan) {
                         let mut prefix = None;
-                        if let Some(chum) = channel.users.get(&nick) {
+                        if let Some(chum) = channel.users.get(nick) {
                             let p = chum.to_string(&conn_state.caps);
                             if !p.is_empty() {
                                 prefix = Some(p);
@@ -475,7 +475,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsChannels319 {
                             client,
-                            nick: &nick,
+                            nick,
                             channels: &chans,
                         },
                     )
@@ -486,7 +486,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplAway301 {
                             client,
-                            nick: &nick,
+                            nick,
                             message: arg_user.away.as_ref().unwrap(),
                         },
                     )
@@ -497,7 +497,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsHost378 {
                             client,
-                            nick: &nick,
+                            nick,
                             host_info: &arg_user.hostname.to_string(),
                         },
                     )
@@ -506,7 +506,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsModes379 {
                             client,
-                            nick: &nick,
+                            nick,
                             modes: &arg_user.modes.to_string(),
                         },
                     )
@@ -516,7 +516,7 @@ impl super::MainState {
                     &mut conn_state.stream,
                     RplwhoIsIdle317 {
                         client,
-                        nick: &nick,
+                        nick,
                         secs: SystemTime::now()
                             .duration_since(UNIX_EPOCH)
                             .unwrap()
@@ -533,7 +533,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsSecure671 {
                             client,
-                            nick: &nick,
+                            nick,
                         },
                     )
                     .await?;
@@ -544,7 +544,7 @@ impl super::MainState {
                         &mut conn_state.stream,
                         RplWhoIsWebsocket672 {
                             client,
-                            nick: &nick,
+                            nick,
                         },
                     )
                     .await?;
@@ -556,8 +556,7 @@ impl super::MainState {
                     client,
                     nick: &nickmasks.join(","),
                 },
-            )
-            .await?;
+            ).await?;
         }
         Ok(())
     }
@@ -654,37 +653,32 @@ impl super::MainState {
         nickname: &'a str,
         comment: &'a str,
     ) -> Result<(), Box<dyn Error>> {
+        let client = conn_state.user_state.client_name();
+        let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let state = self.state.read().await;
-        if let Some(user) = state.users.get(user_nick) {
-            if user.modes.is_local_oper() {
-                if let Some(user_to_kill) = state.users.get(nickname) {
-                    conn_state.user_state.quit_reason = format!("Killed by {}: {}", user_nick, comment);
-                    // notify other users in channels
-                    for chname in &user_to_kill.channels {
-                        if let Some(channel) = state.channels.get(chname) {
-                            for (other_nick, _) in &channel.users {
-                                if other_nick != nickname {
-                                    if let Some(other_user) = state.users.get(other_nick) {
-                                        let _ = other_user.send_msg_display(
-                                            &conn_state.user_state.source,
-                                            format!("QUIT :Server Quit: {}", conn_state.user_state.quit_reason),
-                                        );
-                                    }
-                                }
-                            }
-                        }
-                    }
-                    // remove user from state
-                    drop(state);
-                    let mut state = self.state.write().await;
-                    state.remove_user(nickname);
-                } else {
-                    let _ = conn_state.stream.feed(format!(":{} {} :No such nick/channel", user_nick, nickname));
+        let user = state.users.get(user_nick).unwrap();
+
+        if user.modes.oper {
+            // only operator can kill user
+            if let Some(user_to_kill) = state.users.get_mut(nickname) {
+                if let Some(sender) = user_to_kill.quit_sender.take() {
+                    sender
+                        .send((user_nick.to_string(), comment.to_string()))
+                        .map_err(|_| "error".to_string())?;
                 }
             } else {
-                let _ = conn_state.stream.feed(format!(":{} :Permission Denied- You're not an IRC operator", user_nick));
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrNoSuchNick401 {
+                        client,
+                        nick: nickname,
+                    },
+                )
+                .await?;
             }
+        } else {
+            self.feed_msg(&mut conn_state.stream, ErrNoPrivileges481 { client })
+                .await?;
         }
         Ok(())
     }
@@ -730,27 +724,27 @@ impl super::MainState {
         conn_state: &mut ConnState,
         message_opt: Option<&'a str>,
     ) -> Result<(), Box<dyn Error>> {
+        let client = conn_state.user_state.client_name();
+        let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let state = self.state.read().await;
-        if let Some(user) = state.users.get(user_nick) {
-            if user.modes.is_local_oper() {
-                let message = message_opt.unwrap_or("Server shutdown");
-                // notify all users
-                for (nick, u) in &state.users {
-                    if nick != user_nick {
-                        let _ = u.send_msg_display(
-                            &self.config.name,
-                            format!("QUIT :Server shutdown: {}", message),
-                        );
-                    }
+        let user = state.users.get(user_nick).unwrap();
+        let message = message_opt.unwrap_or("Shutting down server");
+
+        // only operator can kill server
+        if user.modes.oper {
+            for u in state.users.values_mut() {
+                if let Some(sender) = u.quit_sender.take() {
+                    sender
+                        .send((user_nick.to_string(), message.to_string()))
+                        .map_err(|_| "error".to_string())?;
                 }
-                // notify quit sender
-                let _ = conn_state.stream.feed(format!(":{} Server shutdown: {}", user_nick, message));
-                // set quit reason for all users
-                conn_state.user_state.quit_reason = format!("Server shutdown: {}", message);
-            } else {
-                let _ = conn_state.stream.feed(format!(":{} :Permission Denied- You're not an IRC operator", user_nick));
             }
+            if let Some(sender) = state.quit_sender.take() {
+                sender.send(message.to_string())?;
+            }
+        } else {
+            self.feed_msg(&mut conn_state.stream, ErrCantKillServer483 { client })
+                .await?;
         }
         Ok(())
     }
@@ -1940,7 +1934,7 @@ mod test {
         quit_test_server(main_state, handle).await;
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+    #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_command_whois_tls() {
         let (main_state, handle, port) = run_test_tls_server(MainConfig::default()).await;
@@ -2293,7 +2287,11 @@ mod test {
             expecteds.sort();
             let mut results = vec![];
             for _ in 0..9 {
-                results.push(line_stream.next().await.unwrap().unwrap());
+                if let Some(result) = line_stream.next().await {
+                    if let Ok(msg) = result {
+                        results.push(msg);
+                    }
+                }
             }
             results.sort();
             assert_eq!(expecteds, results);
@@ -2474,7 +2472,7 @@ mod test {
                 .await
                 .unwrap();
             assert_eq!(
-                ":irc.irc ERROR :User killed by fanny: Not polite".to_string(),
+                ":fanny QUIT :Server Quit: Killed by fanny: Not polite".to_string(),
                 dizzy_stream.next().await.unwrap().unwrap()
             );
             time::sleep(Duration::from_millis(50)).await;
@@ -2484,7 +2482,7 @@ mod test {
                 .await
                 .unwrap();
             assert_eq!(
-                ":irc.irc 401 fanny dizzy :No such nick/channel".to_string(),
+                ":fanny dizzy :No such nick/channel".to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
         }
@@ -2511,13 +2509,11 @@ mod test {
                 .await
                 .unwrap();
             assert_eq!(
-                ":irc.irc 481 fanny :Permission Denied- You're not an IRC \
-                        operator"
-                    .to_string(),
+                ":fanny :Permission Denied- You're not an IRC operator".to_string(),
                 line_stream.next().await.unwrap().unwrap()
             );
             time::sleep(Duration::from_millis(50)).await;
-            assert!(!main_state.state.read().await.users.contains_key("dizzy"));
+            assert!(main_state.state.read().await.users.contains_key("dizzy"));
         }
 
         quit_test_server(main_state, handle).await;
@@ -2531,7 +2527,7 @@ mod test {
             password: argon2_hash_password("Funny"),
             mask: None,
         }]);
-        let (_, _, port) = run_test_server(config).await;
+        let (main_state, handle, port) = run_test_server(config).await;
 
         {
             let mut line_stream =
@@ -2541,8 +2537,21 @@ mod test {
                 .await
                 .unwrap();
             line_stream.next().await.unwrap().unwrap();
+            let mut dizzy_stream =
+                login_to_test_and_skip(port, "dizzy", "dizzy", "Dizzy Multi").await;
+
             line_stream.send("DIE :Blabla".to_string()).await.unwrap();
+            assert_eq!(
+                ":irc.irc QUIT :Server shutdown: Blabla".to_string(),
+                dizzy_stream.next().await.unwrap().unwrap()
+            );
+            assert_eq!(
+                ":fanny Server shutdown: Blabla".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
         }
+
+        quit_test_server(main_state, handle).await;
     }
 
     #[tokio::test]
@@ -2553,7 +2562,7 @@ mod test {
             password: argon2_hash_password("Funny"),
             mask: None,
         }]);
-        let (_, _, port) = run_test_server(config).await;
+        let (main_state, handle, port) = run_test_server(config).await;
 
         {
             let mut line_stream =
@@ -2563,8 +2572,21 @@ mod test {
                 .await
                 .unwrap();
             line_stream.next().await.unwrap().unwrap();
+            let mut dizzy_stream =
+                login_to_test_and_skip(port, "dizzy", "dizzy", "Dizzy Multi").await;
+
             line_stream.send("DIE".to_string()).await.unwrap();
+            assert_eq!(
+                ":irc.irc QUIT :Server shutdown: Server shutdown".to_string(),
+                dizzy_stream.next().await.unwrap().unwrap()
+            );
+            assert_eq!(
+                ":fanny Server shutdown: Server shutdown".to_string(),
+                line_stream.next().await.unwrap().unwrap()
+            );
         }
+
+        quit_test_server(main_state, handle).await;
     }
 
     #[tokio::test]

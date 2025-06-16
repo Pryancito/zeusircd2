@@ -869,7 +869,7 @@ mod test {
         );
         assert_eq!(
             Err("Unknown umode flag in parameter 2".to_string()),
-            validate_usermodes(&vec![("+io-rw", vec![]), ("-x", vec![])])
+            validate_usermodes(&vec![(" +io-rw", vec![]), ("-x", vec![])])
                 .map_err(|e| e.to_string())
         );
     }

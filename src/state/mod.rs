@@ -225,7 +225,7 @@ impl MainState {
                 Ok(())
             }
             Ok((killer, comment)) = &mut conn_state.quit_receiver => {
-                let msg = format!("User {} killed by {}: {}", conn_state.user_state.source,
+                let msg = format!("User killed by {}: {}",
                             killer, comment);
                 conn_state.user_state.quit_reason = msg.to_string();
                 self.feed_msg(&mut conn_state.stream, msg).await?;
@@ -748,9 +748,8 @@ pub(crate) async fn run_server(
 
                 tokio::spawn(async move {
                     let mut quit_receiver = main_state.get_quit_receiver().await;
-                    let mut do_quit = false;
                     info!("Listen TLS {} on port: {}", listener_config.listen, listener_config.port);
-                    while !do_quit {
+                    loop {
                         tokio::select! {
                             res = listener.accept() => {
                                 match res {
@@ -763,7 +762,7 @@ pub(crate) async fn run_server(
                             }
                             Ok(msg) = &mut quit_receiver => {
                                 info!("Server quit: {}", msg);
-                                do_quit = true;
+                                std::process::exit(0);
                             }
                         };
                     }
@@ -776,9 +775,8 @@ pub(crate) async fn run_server(
             let tls_config = listener_config.tls.clone();
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
-                let mut do_quit = false;
                 info!("Listen Secure Websocket {} on port: {}", listener_config.listen, listener_config.port);
-                while !do_quit {
+                loop {
                     tokio::select! {
                         res = listener.accept() => {
                             match res {
@@ -795,8 +793,8 @@ pub(crate) async fn run_server(
                             };
                         }
                         Ok(msg) = &mut quit_receiver => {
-                            info!("Servidor cerrado: {}", msg);
-                            do_quit = true;
+                            info!("Server quit: {}", msg);
+                            std::process::exit(0);
                         }
                     };
                 }
@@ -804,9 +802,8 @@ pub(crate) async fn run_server(
         } else {
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
-                let mut do_quit = false;
                 info!("Listen Plain {} on port: {}", listener_config.listen, listener_config.port);
-                while !do_quit {
+                loop {
                     tokio::select! {
                         res = listener.accept() => {
                             match res {
@@ -819,7 +816,7 @@ pub(crate) async fn run_server(
                         }
                         Ok(msg) = &mut quit_receiver => {
                             info!("Server quit: {}", msg);
-                            do_quit = true;
+                            std::process::exit(0);
                         }
                     };
                 }

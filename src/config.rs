@@ -721,8 +721,8 @@ mod test {
         }
         .to_string();
         assert!(
-            "+imn +I somebody +a guy1 +a guy2".to_string() == chm_str
-                || "+imn +I somebody +a guy1 +a guy2".to_string() == chm_str
+            "+imn +I somebody +q guy1 +q guy2".to_string() == chm_str
+                || "+imn +I somebody +q guy2 +q guy1".to_string() == chm_str
         );
     }
 

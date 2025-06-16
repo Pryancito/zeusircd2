@@ -442,9 +442,9 @@ pub(crate) enum Reply<'a> {
         client: &'a str,
         channel: &'a str,
     },
-    /*ErrCantKillServer483 {
+    ErrCantKillServer483 {
         client: &'a str,
-    },*/
+    },
     ErrYourConnRestricted484 {
         client: &'a str,
     },
@@ -1103,9 +1103,9 @@ impl<'a> fmt::Display for Reply<'a> {
             ErrChanOpPrivsNeeded482 { client, channel } => {
                 write!(f, "482 {} {} :You're not channel operator", client, channel)
             }
-            /*ErrCantKillServer483 { client } => {
+            ErrCantKillServer483 { client } => {
                 write!(f, "483 {} :You cant kill a server!", client)
-            }*/
+            }
             ErrYourConnRestricted484 { client } => {
                 write!(f, "484 {} :Your connection is restricted!", client)
             }

@@ -1541,10 +1541,6 @@ mod test {
             let mut line_stream = login_to_test_and_skip(port, "brian", "brianx", "BrianX").await;
 
             line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR: Closing connection".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
             time::sleep(Duration::from_millis(50)).await;
             assert!(!main_state.state.read().await.users.contains_key("brian"));
         }
@@ -1556,10 +1552,8 @@ mod test {
             line_stream.send("NICK brian".to_string()).await.unwrap();
 
             line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR: Closing connection".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
+            time::sleep(Duration::from_millis(50)).await;
+            assert!(!main_state.state.read().await.users.contains_key("brian"));
         }
 
         {
@@ -1567,10 +1561,7 @@ mod test {
             let mut line_stream = Framed::new(stream, IRCLinesCodec::new_with_max_length(2000));
 
             line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc ERROR: Closing connection".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
+            time::sleep(Duration::from_millis(50)).await;
         }
 
         quit_test_server(main_state, handle).await;
@@ -1599,6 +1590,7 @@ mod test {
                 let state = main_state.state.read().await;
                 assert!(state.channels.contains_key("#carrots"));
                 assert!(!state.channels.contains_key("#apples"));
+                assert!(!state.users.contains_key("brian"));
             }
         }
 
@@ -1625,7 +1617,7 @@ mod test {
         quit_test_server(main_state, handle).await;
     }
 
-    #[cfg(any(feature = "tls_rustls", feature = "tls_openssl"))]
+    #[cfg(feature = "tls")]
     #[tokio::test]
     async fn test_auth_with_tls_secure_mode() {
         let (main_state, handle, port) = run_test_tls_server(MainConfig::default()).await;

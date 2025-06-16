@@ -37,12 +37,12 @@ use crate::command::*;
 use crate::config::*;
 use crate::utils::*;
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub(super) struct User {
     pub(super) hostname: String,
     pub(super) cloack: String,
     pub(super) sender: UnboundedSender<String>,
-    //pub(super) quit_sender: Option<oneshot::Sender<(String, String)>>,
+    pub(super) quit_sender: Option<oneshot::Sender<(String, String)>>,
     pub(super) name: String,
     pub(super) realname: String,
     pub(super) source: String, // IRC source for mask matching
@@ -62,7 +62,7 @@ impl User {
         config: &MainConfig,
         user_state: &ConnUserState,
         sender: UnboundedSender<String>,
-        _quit_sender: oneshot::Sender<(String, String)>,
+        quit_sender: oneshot::Sender<(String, String)>,
     ) -> User {
         let mut user_modes = config.default_user_modes;
         user_modes.registered = user_modes.registered || user_state.registered;
@@ -74,6 +74,7 @@ impl User {
             hostname: user_state.hostname.clone(),
             cloack: user_state.hostname.clone(),
             sender,
+            quit_sender: Some(quit_sender),
             name: user_state.name.as_ref().unwrap().clone(),
             realname: user_state.realname.as_ref().unwrap().clone(),
             source: user_state.source.clone(),
@@ -306,6 +307,27 @@ impl User {
             }
         } else {
             self.hostname.clone()
+        }
+    }
+}
+
+impl Clone for User {
+    fn clone(&self) -> Self {
+        User {
+            hostname: self.hostname.clone(),
+            cloack: self.cloack.clone(),
+            sender: self.sender.clone(), // Esto funciona si UnboundedSender implementa Clone
+            quit_sender: None, // No se puede clonar oneshot::Sender
+            name: self.name.clone(),
+            realname: self.realname.clone(),
+            source: self.source.clone(),
+            modes: self.modes, // Si UserModes implementa Copy/Clone
+            away: self.away.clone(),
+            channels: self.channels.clone(),
+            invited_to: self.invited_to.clone(),
+            last_activity: self.last_activity,
+            signon: self.signon,
+            history_entry: self.history_entry.clone(),
         }
     }
 }
@@ -1636,7 +1658,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
-                cloack: String::new(),
+                cloack: "192.168.1.7".to_string(),
             },
             cus
         );
@@ -1654,7 +1676,7 @@ mod test {
                 authenticated: false,
                 registered: false,
                 quit_reason: String::new(),
-                cloack: String::new(),
+                cloack: "192.168.1.7".to_string(),
             },
             cus
         );
