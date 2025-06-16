@@ -742,51 +742,18 @@ impl<'a> Command<'a> {
             "WHOIS" => {
                 if !message.params.is_empty() {
                     if message.params.len() >= 2 {
-                        // Si el primer parámetro es un nick válido, tratarlo como parte de los nickmasks
-                        if validate_username(message.params[0]).is_ok() {
-                            let mut nickmasks = message.params[0].split(',').collect::<Vec<_>>();
-                            nickmasks.extend(message.params[1].split(','));
-                            // Eliminar duplicados manteniendo el orden
-                            let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                                .fold(Vec::new(), |mut acc, &x| {
-                                    if !acc.contains(&x) {
-                                        acc.push(x);
-                                    }
-                                    acc
-                                });
-                            Ok(WHOIS {
-                                target: None,
-                                nickmasks: unique_nickmasks,
-                            })
-                        } else {
-                            // Si el primer parámetro no es un nick válido, tratarlo como servidor
-                            let nickmasks: Vec<&str> = message.params[1].split(',').collect();
-                            // Eliminar duplicados manteniendo el orden
-                            let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                                .fold(Vec::new(), |mut acc, &x| {
-                                    if !acc.contains(&x) {
-                                        acc.push(x);
-                                    }
-                                    acc
-                                });
-                            Ok(WHOIS {
-                                target: Some(message.params[0]),
-                                nickmasks: unique_nickmasks,
-                            })
-                        }
+                        // Si hay dos parámetros, el primero es el servidor y el segundo son los nicks
+                        let nickmasks: Vec<&str> = message.params[1].split(',').collect();
+                        Ok(WHOIS {
+                            target: Some(message.params[0]),
+                            nickmasks,
+                        })
                     } else {
+                        // Si solo hay un parámetro, son los nicks
                         let nickmasks: Vec<&str> = message.params[0].split(',').collect();
-                        // Eliminar duplicados manteniendo el orden
-                        let unique_nickmasks: Vec<&str> = nickmasks.iter()
-                            .fold(Vec::new(), |mut acc, &x| {
-                                if !acc.contains(&x) {
-                                    acc.push(x);
-                                }
-                                acc
-                            });
                         Ok(WHOIS {
                             target: None,
-                            nickmasks: unique_nickmasks,
+                            nickmasks,
                         })
                     }
                 } else {

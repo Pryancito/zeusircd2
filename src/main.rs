@@ -23,6 +23,7 @@ mod help;
 mod reply;
 mod state;
 mod utils;
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
 mod database;
 
 use clap::Parser;
@@ -38,8 +39,11 @@ use utils::*;
 use crate::database::sqlite::sqlite_impl::{SQLiteNickDatabase, SQLiteChannelDatabase};
 #[cfg(feature = "mysql")]
 use crate::database::mysql::mysql_impl::{MySqlNickDatabase, MySqlChannelDatabase};
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
 use crate::database::{NickDatabase, ChannelDatabase};
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
 use std::sync::{Arc, Mutex};
+#[cfg(any(feature = "mysql", feature = "sqlite"))]
 pub struct DBState {
     pub nick_db: Arc<Mutex<Box<dyn NickDatabase + Send + Sync>>>,
     pub channel_db: Arc<Mutex<Box<dyn ChannelDatabase + Send + Sync>>>,

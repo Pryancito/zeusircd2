@@ -1047,7 +1047,8 @@ mod test {
             registered: true,
             wallops: false,
             websocket: false,
-            secure: false
+            secure: false,
+            cloacked: false
         };
         let user_state = ConnUserState {
             ip_addr: "127.0.0.1".parse().unwrap(),

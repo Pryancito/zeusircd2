@@ -865,12 +865,9 @@ mod test {
     pub(crate) async fn run_test_server(
         config: MainConfig,
     ) -> (Arc<MainState>, JoinHandle<()>, u16) {
-        //LOGGING_START.call_once(|| {
-        //    initialize_logging(&MainConfig::default());
-        //});
         let mut config = config;
         let port = PORT_COUNTER.fetch_add(1, Ordering::SeqCst);
-        let port = 6667;
+        config.listeners.iter_mut().for_each(|l| l.port = port);
         let (main_state, handle) = run_server(config).await.unwrap();
         (main_state, handle, port)
     }

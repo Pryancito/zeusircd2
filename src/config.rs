@@ -531,7 +531,16 @@ impl Default for MainConfig {
             channels: None,
             operators: None,
             users: None,
-            default_user_modes: UserModes::default(),
+            default_user_modes: UserModes {
+                invisible: false,
+                oper: false,
+                local_oper: false,
+                registered: false,
+                wallops: false,
+                websocket: false,
+                secure: false,
+                cloacked: false,
+            },
             database: None,
             log_file: None,
             log_level: tracing::Level::INFO,
@@ -628,6 +637,7 @@ mod test {
             "+itnl 10 +I somebody +o expert".to_string(),
             ChannelModes {
                 ban: None,
+                global_ban: None,
                 exception: None,
                 invite_exception: Some(["somebody".to_string()].into()),
                 client_limit: Some(10),
@@ -647,6 +657,7 @@ mod test {
         );
         let chm_str = ChannelModes {
             ban: Some(["somebody".to_string(), "somebody2".to_string()].into()),
+            global_ban: None,
             exception: None,
             invite_exception: None,
             client_limit: None,
@@ -669,6 +680,7 @@ mod test {
         );
         let chm_str = ChannelModes {
             ban: None,
+            global_ban: None,
             exception: None,
             invite_exception: Some(["somebody".to_string()].into()),
             client_limit: None,
@@ -691,6 +703,7 @@ mod test {
         );
         let chm_str = ChannelModes {
             ban: None,
+            global_ban: None,
             exception: None,
             invite_exception: Some(["somebody".to_string()].into()),
             client_limit: None,
@@ -709,7 +722,7 @@ mod test {
         .to_string();
         assert!(
             "+imn +I somebody +a guy1 +a guy2".to_string() == chm_str
-                || "+imn +I somebody +a guy2 +a guy1".to_string() == chm_str
+                || "+imn +I somebody +a guy1 +a guy2".to_string() == chm_str
         );
     }
 
