@@ -188,7 +188,7 @@ impl super::MainState {
                             something_done = true;
 
                             // Enviar mensaje AMQP para canales
-                            
+                            #[cfg(feature = "amqp")]
                             if !chan_str.starts_with('&') {
                                 let serv_comm = self.serv_comm.read().await;
                                 let mensaje = format!(":{} {} {}",
@@ -219,6 +219,7 @@ impl super::MainState {
                         something_done = true;
 
                         // Enviar mensaje AMQP para usuarios
+                        #[cfg(feature = "amqp")]
                         if !chan_str.starts_with('&') {
                             let serv_comm = self.serv_comm.read().await;
                             let mensaje = format!(":{} {} {}",

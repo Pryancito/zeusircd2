@@ -608,11 +608,6 @@ impl super::MainState {
                                                 }
                                             });
                                         }
-                                        
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} +b {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     } else {
                                         // put to applied modes
                                         modes_params_string += " -b ";
@@ -620,11 +615,6 @@ impl super::MainState {
 
                                         ban.remove(&norm_bmask);
                                         chanobj.ban_info.remove(&norm_bmask);
-
-                                        let serv_comm = self.serv_comm.read().await;
-                                        let mensaje = format!(":{} {} MODE {} -b {}",
-                                            self.config.name, conn_state.user_state.source, target, norm_bmask);
-                                        let _ = serv_comm.publish_message(&mensaje).await;
                                     }
                                     chanobj.modes.ban = Some(ban);
                                 } else {
@@ -747,7 +737,7 @@ impl super::MainState {
                                                 }
                                             });
                                         }
-                                        
+                                        #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
                                             let mensaje = format!(":{} {} MODE {} +B {}",
@@ -761,7 +751,7 @@ impl super::MainState {
 
                                         gban.remove(&norm_bmask);
                                         chanobj.ban_info.remove(&norm_bmask);
-
+                                        #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
                                             let mensaje = format!(":{} {} MODE {} -B {}",

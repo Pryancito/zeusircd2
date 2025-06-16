@@ -37,9 +37,9 @@ mysql_async = { version = "0.36.1", optional = true }
 tokio-tungstenite = "0.26.2"
 tungstenite = "0.26.2"
 url = "2.5.4"
-lapin = "2.3"
-amq-protocol = "7.1"
-amq-protocol-types = "7.1"
+lapin = { version = "2.3", optional = true }
+amq-protocol = { version = "7.1", optional = true }
+amq-protocol-types = { version = "7.1", optional = true }
 serde_json = "1.0.140"
 anyhow = "1.0.98"
 sha2 = "0.10"
@@ -50,6 +50,7 @@ tls = [ "openssl", "tokio-openssl" ]
 dns_lookup = [ "trust-dns-resolver" ]
 sqlite3 = ["sqlite"]
 mysql = ["mysql_async"]
+amqp = ["lapin", "amq-protocol", "amq-protocol-types"]
 
 [dependencies.tracing-subscriber]
 version = "0.3.1"

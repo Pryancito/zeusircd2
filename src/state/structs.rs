@@ -53,6 +53,7 @@ pub(super) struct User {
     pub(super) last_activity: u64,
     pub(super) signon: u64,
     pub(super) history_entry: NickHistoryEntry,
+    #[cfg(feature = "amqp")]
     pub(super) server: String,
 }
 
@@ -88,6 +89,7 @@ impl User {
                 realname: user_state.realname.as_ref().unwrap().clone(),
                 signon: now_ts,
             },
+            #[cfg(feature = "amqp")]
             server: config.name.clone(),
         };
 

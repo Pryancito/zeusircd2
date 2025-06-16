@@ -381,6 +381,7 @@ pub(crate) struct MainConfig {
     pub(crate) users: Option<Vec<UserConfig>>,
     #[validate(nested)]
     pub(crate) channels: Option<Vec<ChannelConfig>>,
+    #[cfg(feature = "amqp")]
     pub(crate) amqp: AmqpConfig,
     pub(crate) cloack: Cloacked,
 }
@@ -393,6 +394,7 @@ pub struct Cloacked {
     pub prefix: String,
 }
 
+#[cfg(feature = "amqp")]
 #[derive(PartialEq, Eq, Deserialize, Debug, Validate, Clone)]
 pub struct AmqpConfig {
     pub url: String,
@@ -533,6 +535,7 @@ impl Default for MainConfig {
             database: None,
             log_file: None,
             log_level: tracing::Level::INFO,
+            #[cfg(feature = "amqp")]
             amqp: AmqpConfig {
                 url: "amqp://guest:guest@localhost:5672/%2f".to_string(),
                 exchange: "irc_exchange".to_string(),

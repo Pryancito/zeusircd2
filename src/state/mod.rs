@@ -48,6 +48,7 @@ use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
+#[cfg(feature = "amqp")]
 use crate::state::server_communication::ServerCommunication;
 use Reply::*;
 
@@ -62,6 +63,7 @@ pub(crate) struct MainState {
     oper_config_idxs: HashMap<String, usize>,
     conns_count: Arc<AtomicUsize>,
     state: Arc<RwLock<VolatileState>>,
+    #[cfg(feature = "amqp")]
     serv_comm: RwLock<ServerCommunication>,
     created: String,
     created_time: DateTime<Local>,
@@ -84,6 +86,7 @@ impl MainState {
             });
         }
         let state = Arc::new(RwLock::new(VolatileState::new_from_config(&config)));
+        #[cfg(feature = "amqp")]
         let serv_comm = {
             RwLock::new(ServerCommunication::new(
                 &state,
@@ -100,6 +103,7 @@ impl MainState {
             user_config_idxs,
             oper_config_idxs,
             state,
+            #[cfg(feature = "amqp")]
             serv_comm,
             conns_count,
             created: now.to_rfc2822(),
@@ -833,7 +837,9 @@ pub(crate) async fn run_server(
         }
     });
 
+    #[cfg(feature = "amqp")]
     let _ = main_state.serv_comm.write().await.connect().await;
+    #[cfg(feature = "amqp")]
     let _ = main_state.serv_comm.write().await.start_consuming().await;
 
     println!("Server Started...");
@@ -1163,5 +1169,5 @@ mod channel_cmds;
 mod conn_cmds;
 mod rest_cmds;
 mod srv_query_cmds;
-
+#[cfg(feature = "amqp")]
 pub mod server_communication;
