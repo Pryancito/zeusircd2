@@ -42,8 +42,7 @@ use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
-use tokio::io::{AsyncRead, AsyncWrite};
-use tokio_tungstenite::WebSocketStream;
+use tungstenite::protocol::WebSocketConfig;
 
 use crate::command::*;
 use crate::config::*;
@@ -702,8 +701,8 @@ async fn handle_websocket_connection(
     {
         if let Some(tlsconfig) = _tls_config {
             let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
-            acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
-            acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
+            acceptor.set_private_key_file(&tlsconfig.cert_key_file, SslFiletype::PEM)?;
+            acceptor.set_certificate_chain_file(&tlsconfig.cert_file)?;
             let acceptor = Arc::new(acceptor.build());
             
             let ssl = Ssl::new(acceptor.context())?;
@@ -711,25 +710,22 @@ async fn handle_websocket_connection(
             use std::pin::Pin;
             Pin::new(&mut tls_stream).accept().await?;
             
-            let ws_stream = accept_async_with_config(tls_stream).await?;
+            let mut config = WebSocketConfig::default();
+            config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
+            config.max_message_size = Some(1024 * 1024); // 1MB max message size
+            config.accept_unmasked_frames = true;
+            let ws_stream = tokio_tungstenite::accept_async_with_config(tls_stream, Some(config)).await?;
             return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
         }
     }
 
     // Si no hay configuración TLS o no está habilitado, usamos WebSocket normal
-    let ws_stream = accept_async_with_config(stream).await?;
+    let mut config = WebSocketConfig::default();
+    config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
+    config.max_message_size = Some(1024 * 1024); // 1MB max message size
+    config.accept_unmasked_frames = true;
+    let ws_stream = tokio_tungstenite::accept_async_with_config(stream, Some(config)).await?;
     Ok(DualTcpStream::WebSocketStream(ws_stream))
-}
-
-// Función auxiliar para configurar el handshake de WebSocket
-async fn accept_async_with_config<S>(
-    stream: S,
-) -> Result<WebSocketStream<S>, Box<dyn Error + Send + Sync>>
-where
-    S: AsyncRead + AsyncWrite + Unpin,
-{
-    let ws_stream = tokio_tungstenite::accept_async(stream).await?;
-    Ok(ws_stream)
 }
 
 // main routine to run server
