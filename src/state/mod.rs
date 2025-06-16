@@ -714,7 +714,13 @@ async fn handle_websocket_connection(
             config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
             config.max_message_size = Some(1024 * 1024); // 1MB max message size
             config.accept_unmasked_frames = true;
-            let ws_stream = tokio_tungstenite::accept_async_with_config(tls_stream, Some(config)).await?;
+            
+            // Configurar el handshake con los protocolos soportados
+            let ws_stream = tokio_tungstenite::accept_async_with_config(
+                tls_stream,
+                Some(config)
+            ).await?;
+            
             return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
         }
     }
@@ -724,7 +730,13 @@ async fn handle_websocket_connection(
     config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
     config.max_message_size = Some(1024 * 1024); // 1MB max message size
     config.accept_unmasked_frames = true;
-    let ws_stream = tokio_tungstenite::accept_async_with_config(stream, Some(config)).await?;
+    
+    // Configurar el handshake con los protocolos soportados
+    let ws_stream = tokio_tungstenite::accept_async_with_config(
+        stream,
+        Some(config)
+    ).await?;
+    
     Ok(DualTcpStream::WebSocketStream(ws_stream))
 }
 
