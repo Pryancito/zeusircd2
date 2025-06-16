@@ -691,11 +691,11 @@ async fn dns_lookup_process(
 async fn handle_websocket_connection(
     stream: TcpStream,
     _addr: SocketAddr,
-    tls_config: Option<TLSConfig>,
+    _tls_config: Option<TLSConfig>,
 ) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
     #[cfg(feature = "tls")]
     {
-        if let Some(tlsconfig) = tls_config {
+        if let Some(tlsconfig) = _tls_config {
             let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
             acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
             acceptor.set_certificate_chain_file(tlsconfig.cert_file)?;
@@ -733,9 +733,9 @@ pub(crate) async fn run_server(
         let main_state = main_state.clone();
         let listener = TcpListener::bind((listener_config.listen, listener_config.port)).await?;
         let handle = if listener_config.tls.is_some() && !listener_config.websocket {
-            let cloned_tls = listener_config.tls.clone();
             #[cfg(feature = "tls")]
             {
+                let cloned_tls = listener_config.tls.clone();
                 let tlsconfig = cloned_tls.unwrap();
                 let mut acceptor = SslAcceptor::mozilla_intermediate(SslMethod::tls())?;
                 acceptor.set_private_key_file(tlsconfig.cert_key_file, SslFiletype::PEM)?;
@@ -773,7 +773,7 @@ pub(crate) async fn run_server(
             tokio::spawn(async move {
                 let mut quit_receiver = main_state.get_quit_receiver().await;
                 let mut do_quit = false;
-                info!("Listen Websocket {} on port: {}", listener_config.listen, listener_config.port);
+                info!("Listen Secure Websocket {} on port: {}", listener_config.listen, listener_config.port);
                 while !do_quit {
                     tokio::select! {
                         res = listener.accept() => {
@@ -833,9 +833,7 @@ pub(crate) async fn run_server(
         }
     });
 
-
     let _ = main_state.serv_comm.write().await.connect().await;
-
     let _ = main_state.serv_comm.write().await.start_consuming().await;
 
     println!("Server Started...");
