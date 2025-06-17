@@ -741,20 +741,20 @@ impl<'a> Command<'a> {
             }
             "WHOIS" => {
                 if !message.params.is_empty() {
-                    if message.params.len() >= 2 {
-                        // Si hay dos parámetros, el primero es el servidor y el segundo son los nicks
-                        let nickmasks: Vec<&str> = message.params[1].split(',').collect();
-                        Ok(WHOIS {
-                            target: Some(message.params[0]),
-                            nickmasks,
-                        })
-                    } else {
-                        // Si solo hay un parámetro, son los nicks
+                    if message.params.len() == 1 {
                         let nickmasks: Vec<&str> = message.params[0].split(',').collect();
                         Ok(WHOIS {
                             target: None,
                             nickmasks,
                         })
+                    } else if message.params.len() == 2 {
+                        let nickmasks: Vec<&str> = message.params[1].split(',').collect();
+                        Ok(WHOIS {
+                            target: None,
+                            nickmasks,
+                        })
+                    } else {
+                        Err(NeedMoreParams(WHOISId))
                     }
                 } else {
                     Err(NeedMoreParams(WHOISId))

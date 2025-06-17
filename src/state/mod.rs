@@ -509,7 +509,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                                 if conn_state.is_secure() {
                                     user.modes.secure = true;
                                 }
-                                else if conn_state.is_websocket() {
+                                if conn_state.is_websocket() {
                                     user.modes.websocket = true;
                                 }
                             }
