@@ -22,14 +22,14 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use argon2::{self, Argon2};
 use bytes::{BufMut, BytesMut};
 use futures::task::{Context, Poll};
-use futures::{Sink, Stream};
+use futures::{Sink, SinkExt, Stream};
 use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::io;
 use std::pin::Pin;
 use tokio::io::ReadBuf;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite};
 use tokio::net::TcpStream;
 #[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
@@ -37,6 +37,7 @@ use tokio_util::codec::{Decoder, Encoder, LinesCodec, LinesCodecError};
 use validator::ValidationError;
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
+use tokio_util::codec::Framed;
 
 use crate::command::CommandError;
 use crate::command::CommandError::*;
@@ -83,59 +84,29 @@ impl AsyncRead for DualTcpStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         match self.get_mut() {
-            DualTcpStream::PlainStream(stream) => Pin::new(stream).poll_read(cx, buf),
+            DualTcpStream::PlainStream(ref mut t) => Pin::new(t).poll_read(cx, buf),
             #[cfg(feature = "tls")]
-            DualTcpStream::SecureStream(stream) => Pin::new(stream).poll_read(cx, buf),
-            DualTcpStream::WebSocketStream(stream) => {
-                let mut ws_buf = Vec::new();
-                match Pin::new(&mut *stream).poll_next(cx) {
+            DualTcpStream::SecureStream(ref mut t) => Pin::new(t).poll_read(cx, buf),
+            DualTcpStream::WebSocketStream(ref mut t) => {
+                match Pin::new(t).poll_next(cx) {
                     Poll::Ready(Some(Ok(Message::Text(text)))) => {
-                        ws_buf.extend_from_slice(text.as_bytes());
-                        buf.put_slice(&ws_buf);
+                        buf.put_slice(text.as_bytes());
                         Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Some(Ok(Message::Binary(data)))) => {
-                        ws_buf.extend_from_slice(&data);
-                        buf.put_slice(&ws_buf);
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Ready(Some(Ok(Message::Ping(data)))) => {
-                        if let Err(e) = Pin::new(stream).start_send(Message::Pong(data)) {
-                            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
-                        }
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Ready(Some(Ok(Message::Pong(_)))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Ok(Message::Close(_)))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Ok(Message::Frame(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(_))) => Poll::Ready(Ok(())),
                     Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                     Poll::Ready(None) => Poll::Ready(Ok(())),
                     Poll::Pending => Poll::Pending,
                 }
             }
             #[cfg(feature = "tls")]
-            DualTcpStream::SecureWebSocketStream(stream) => {
-                let mut ws_buf = Vec::new();
-                match Pin::new(&mut *stream).poll_next(cx) {
+            DualTcpStream::SecureWebSocketStream(ref mut t) => {
+                match Pin::new(t).poll_next(cx) {
                     Poll::Ready(Some(Ok(Message::Text(text)))) => {
-                        ws_buf.extend_from_slice(text.as_bytes());
-                        buf.put_slice(&ws_buf);
+                        buf.put_slice(text.as_bytes());
                         Poll::Ready(Ok(()))
                     }
-                    Poll::Ready(Some(Ok(Message::Binary(data)))) => {
-                        ws_buf.extend_from_slice(&data);
-                        buf.put_slice(&ws_buf);
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Ready(Some(Ok(Message::Ping(data)))) => {
-                        if let Err(e) = Pin::new(stream).start_send(Message::Pong(data)) {
-                            return Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e)));
-                        }
-                        Poll::Ready(Ok(()))
-                    }
-                    Poll::Ready(Some(Ok(Message::Pong(_)))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Ok(Message::Close(_)))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Ok(Message::Frame(_)))) => Poll::Ready(Ok(())),
+                    Poll::Ready(Some(Ok(_))) => Poll::Ready(Ok(())),
                     Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
                     Poll::Ready(None) => Poll::Ready(Ok(())),
                     Poll::Pending => Poll::Pending,
@@ -233,41 +204,37 @@ impl AsyncWrite for DualTcpStream {
 // BufferedStream - to avoid deadlocks if no immediately data sent
 #[derive(Debug)]
 pub(crate) struct BufferedLineStream {
-    stream: DualTcpStream,
+    stream: Framed<DualTcpStream, IRCLinesCodec>,
     buffer: Vec<String>,
 }
 
 impl BufferedLineStream {
     pub(crate) fn new(stream: DualTcpStream) -> Self {
         BufferedLineStream {
-            stream,
+            stream: Framed::new(stream, IRCLinesCodec::new_with_max_length(2000)),
             buffer: vec![],
         }
     }
 
     pub(crate) async fn feed(&mut self, msg: String) -> Result<(), LinesCodecError> {
-        if !self.stream.is_websocket() {
-            self.buffer.push(msg + "\r\n");
-        } else {
-            self.buffer.push(msg);
-        }
+        self.buffer.push(msg);
         Ok(())
     }
 
     pub(crate) async fn flush(&mut self) -> Result<(), LinesCodecError> {
         for msg in self.buffer.drain(..) {
-            self.stream.write_all(msg.as_bytes()).await?;
+            self.stream.feed(msg).await?;
         }
         self.stream.flush().await?;
         Ok(())
     }
 
     pub(crate) fn is_secure(&self) -> bool {
-        self.stream.is_secure()
+        self.stream.get_ref().is_secure()
     }
 
     pub(crate) fn is_websocket(&self) -> bool {
-        self.stream.is_websocket()
+        self.stream.get_ref().is_websocket()
     }
 }
 
@@ -277,35 +244,57 @@ impl Stream for BufferedLineStream {
     fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
         let mut buf = [0u8; 1024];
         let mut read_buf = ReadBuf::new(&mut buf);
-        
-        match Pin::new(&mut self.as_mut().get_mut().stream).poll_read(cx, &mut read_buf) {
-            Poll::Ready(Ok(())) => {
-                if read_buf.filled().is_empty() {
-                    Poll::Ready(None)
-                } else {
-                    let data = read_buf.filled().to_vec();
-                    if self.stream.is_websocket() {
-                        // Para WebSocket, simplemente convertimos a String
-                        match String::from_utf8(data) {
-                            Ok(s) => Poll::Ready(Some(Ok(s))),
-                            Err(_) => Poll::Ready(Some(Err(LinesCodecError::Io(io::Error::new(
-                                io::ErrorKind::InvalidData,
-                                "Invalid UTF-8 sequence",
-                            ))))),
-                        }
-                    } else {
-                        // Para TCP normal y TLS, buscamos el final de línea \r\n
-                        let mut bytes = BytesMut::from(&data[..]);
-                        match IRCLinesCodec::new_with_max_length(512).decode(&mut bytes) {
-                            Ok(Some(line)) => Poll::Ready(Some(Ok(line))),
-                            Ok(None) => Poll::Pending,
-                            Err(e) => Poll::Ready(Some(Err(e))),
+        match self.as_mut().get_mut().stream.get_mut() {
+            DualTcpStream::PlainStream(_) => {
+                Pin::new(&mut self.get_mut().stream).poll_next(cx)
+            }
+            #[cfg(feature = "tls")]
+            DualTcpStream::SecureStream(_) => {
+                Pin::new(&mut self.get_mut().stream).poll_next(cx)
+            }
+            DualTcpStream::WebSocketStream(_) => {
+                match Pin::new(&mut self.get_mut().stream.get_mut()).poll_read(cx, &mut read_buf) {
+                    Poll::Ready(Ok(())) => {
+                        if read_buf.filled().is_empty() {
+                            Poll::Ready(None)
+                        } else {
+                            let data = read_buf.filled().to_vec();
+                            // Para WebSocket, simplemente convertimos a String
+                            match String::from_utf8(data) {
+                                Ok(s) => Poll::Ready(Some(Ok(s))),
+                                Err(_) => Poll::Ready(Some(Err(LinesCodecError::Io(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "Invalid UTF-8 sequence",
+                                ))))),
+                            }
                         }
                     }
+                    Poll::Ready(Err(e)) => Poll::Ready(Some(Err(LinesCodecError::Io(e)))),
+                    Poll::Pending => Poll::Pending,
                 }
             }
-            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(LinesCodecError::Io(e)))),
-            Poll::Pending => Poll::Pending,
+            #[cfg(feature = "tls")]
+            DualTcpStream::SecureWebSocketStream(_) => {
+                match Pin::new(&mut self.get_mut().stream.get_mut()).poll_read(cx, &mut read_buf) {
+                    Poll::Ready(Ok(())) => {
+                        if read_buf.filled().is_empty() {
+                            Poll::Ready(None)
+                        } else {
+                            let data = read_buf.filled().to_vec();
+                            // Para WebSocket, simplemente convertimos a String
+                            match String::from_utf8(data) {
+                                Ok(s) => Poll::Ready(Some(Ok(s))),
+                                Err(_) => Poll::Ready(Some(Err(LinesCodecError::Io(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "Invalid UTF-8 sequence",
+                                ))))),
+                            }
+                        }
+                    }
+                    Poll::Ready(Err(e)) => Poll::Ready(Some(Err(LinesCodecError::Io(e)))),
+                    Poll::Pending => Poll::Pending,
+                }
+            }
         }
     }
 
@@ -330,7 +319,6 @@ impl Encoder<String> for IRCLinesCodec {
     fn encode(&mut self, line: String, buf: &mut BytesMut) -> Result<(), Self::Error> {
         buf.reserve(line.len() + 1);
         buf.put(line.as_bytes());
-        // put "\r\n"
         buf.put_u8(b'\r');
         buf.put_u8(b'\n');
         Ok(())

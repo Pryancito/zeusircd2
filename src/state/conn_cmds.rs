@@ -311,7 +311,6 @@ impl super::MainState {
                 (None, false)
             }
         };
-
         if let Some(good) = auth_opt {
             if good {
                 let user_nick = conn_state.user_state.nick.clone().unwrap();
