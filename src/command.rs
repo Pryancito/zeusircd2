@@ -750,7 +750,7 @@ impl<'a> Command<'a> {
                     } else if message.params.len() == 2 {
                         let nickmasks: Vec<&str> = message.params[1].split(',').collect();
                         Ok(WHOIS {
-                            target: None,
+                            target: Some(message.params[0]),
                             nickmasks,
                         })
                     } else {
@@ -984,7 +984,7 @@ impl<'a> Command<'a> {
             //WHO{ mask } => { Ok(()) }
             WHOIS { target, nickmasks } => {
                 let next_param_idx = if let Some(t) = target {
-                    validate_server(t, WrongParameter(WHOISId, 0))?;
+                    validate_username(t).map_err(|_| WrongParameter(WHOISId, 0))?;
                     1
                 } else {
                     0

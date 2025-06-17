@@ -413,8 +413,8 @@ impl MainState {
                     NOTICE{ targets, text } =>
                         self.process_notice(conn_state, targets, text).await,
                     WHO{ mask } => self.process_who(conn_state, mask).await,
-                    WHOIS{ nickmasks, target: _ } =>
-                        self.process_whois(conn_state, nickmasks).await,
+                    WHOIS{ target, nickmasks } =>
+                        self.process_whois(conn_state, target, nickmasks).await,
                     WHOWAS{ nickname, count, server } =>
                         self.process_whowas(conn_state, nickname, count, server).await,
                     KILL{ nickname, comment } =>

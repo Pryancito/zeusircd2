@@ -359,6 +359,7 @@ impl super::MainState {
     pub(super) async fn process_whois<'a>(
         &self,
         conn_state: &mut ConnState,
+        target: Option<&'a str>,
         nickmasks: Vec<&'a str>,
     ) -> Result<(), Box<dyn Error>> {
         let client = conn_state.user_state.client_name();
@@ -512,20 +513,22 @@ impl super::MainState {
                     )
                     .await?;
                 }
-                self.feed_msg(
-                    &mut conn_state.stream,
-                    RplwhoIsIdle317 {
-                        client,
-                        nick,
-                        secs: SystemTime::now()
-                            .duration_since(UNIX_EPOCH)
-                            .unwrap()
-                            .as_secs()
-                            - arg_user.last_activity,
-                        signon: arg_user.signon,
-                    },
-                )
-                .await?;
+                if target == Some(nick) {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplwhoIsIdle317 {
+                            client,
+                            nick,
+                            secs: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_secs()
+                                - arg_user.last_activity,
+                            signon: arg_user.signon,
+                        },
+                        )
+                        .await?;
+                }
                 // if you connected through TLS connection, then server is working with TLS.
                 // then all users is using secure connection.
                 if conn_state.is_secure() {
