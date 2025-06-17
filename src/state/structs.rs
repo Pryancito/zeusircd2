@@ -18,7 +18,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 use flagset::{flags, FlagSet};
-use futures::{future::Fuse, future::FutureExt};
+use futures::{future::Fuse, future::FutureExt, SinkExt, StreamExt};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::IpAddr;
@@ -32,6 +32,9 @@ use tokio::time;
 use tokio_util::codec::Framed;
 use tracing::*;
 use sha2::{Sha256, Digest};
+use tokio_tungstenite::WebSocketStream;
+use tokio_openssl::SslStream;
+use tokio::net::TcpStream;
 
 use crate::command::*;
 use crate::config::*;
@@ -809,7 +812,7 @@ pub(crate) struct ConnState {
 impl ConnState {
     pub(super) fn new(
         ip_addr: IpAddr,
-        stream: Framed<DualTcpStream, IRCLinesCodec>,
+        stream: DualTcpStream,
         _conns_count: Arc<AtomicUsize>,
     ) -> ConnState {
         let (sender, receiver) = unbounded_channel();
@@ -878,11 +881,11 @@ impl ConnState {
     }
 
     pub(crate) fn is_secure(&self) -> bool {
-        self.stream.get_ref().is_secure()
+        self.stream.is_secure()
     }
 
     pub(crate) fn is_websocket(&self) -> bool {
-        self.stream.get_ref().is_websocket()
+        self.stream.is_websocket()
     }
 }
 

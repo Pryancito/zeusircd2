@@ -662,6 +662,11 @@ impl super::MainState {
                 let mut state = self.state.write().await;
                 state.remove_user(nick);
             }
+        } else {
+            conn_state.quit.store(1, Ordering::SeqCst);
+            info!("User {} quit", conn_state.user_state.source);
+            self.feed_msg(&mut conn_state.stream, "ERROR: Closing connection")
+                .await?;
         }
         Ok(())
     }

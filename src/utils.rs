@@ -22,14 +22,14 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use argon2::{self, Argon2};
 use bytes::{BufMut, BytesMut};
 use futures::task::{Context, Poll};
-use futures::{Sink, SinkExt, Stream};
+use futures::{Sink, SinkExt, Stream, StreamExt};
 use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::io;
 use std::pin::Pin;
 use tokio::io::ReadBuf;
-use tokio::io::{AsyncRead, AsyncWrite};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 #[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
@@ -233,12 +233,12 @@ impl AsyncWrite for DualTcpStream {
 // BufferedStream - to avoid deadlocks if no immediately data sent
 #[derive(Debug)]
 pub(crate) struct BufferedLineStream {
-    stream: Framed<DualTcpStream, IRCLinesCodec>,
+    stream: DualTcpStream,
     buffer: Vec<String>,
 }
 
 impl BufferedLineStream {
-    pub(crate) fn new(stream: Framed<DualTcpStream, IRCLinesCodec>) -> Self {
+    pub(crate) fn new(stream: DualTcpStream) -> Self {
         BufferedLineStream {
             stream,
             buffer: vec![],
@@ -246,32 +246,71 @@ impl BufferedLineStream {
     }
 
     pub(crate) async fn feed(&mut self, msg: String) -> Result<(), LinesCodecError> {
-        self.buffer.push(msg);
+        if !self.stream.is_websocket() {
+            self.buffer.push(msg + "\r\n");
+        } else {
+            self.buffer.push(msg);
+        }
         Ok(())
     }
 
     pub(crate) async fn flush(&mut self) -> Result<(), LinesCodecError> {
         for msg in self.buffer.drain(..) {
-            self.stream.feed(msg).await?;
+            self.stream.write_all(msg.as_bytes()).await?;
         }
         self.stream.flush().await?;
         Ok(())
     }
 
-    pub(crate) fn get_ref(&self) -> &DualTcpStream {
-        self.stream.get_ref()
+    pub(crate) fn is_secure(&self) -> bool {
+        self.stream.is_secure()
+    }
+
+    pub(crate) fn is_websocket(&self) -> bool {
+        self.stream.is_websocket()
     }
 }
 
 impl Stream for BufferedLineStream {
     type Item = Result<String, LinesCodecError>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        Pin::new(&mut self.get_mut().stream).poll_next(cx)
+    fn poll_next(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
+        let mut buf = [0u8; 1024];
+        let mut read_buf = ReadBuf::new(&mut buf);
+        
+        match Pin::new(&mut self.as_mut().get_mut().stream).poll_read(cx, &mut read_buf) {
+            Poll::Ready(Ok(())) => {
+                if read_buf.filled().is_empty() {
+                    Poll::Ready(None)
+                } else {
+                    let data = read_buf.filled().to_vec();
+                    if self.stream.is_websocket() {
+                        // Para WebSocket, simplemente convertimos a String
+                        match String::from_utf8(data) {
+                            Ok(s) => Poll::Ready(Some(Ok(s))),
+                            Err(_) => Poll::Ready(Some(Err(LinesCodecError::Io(io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "Invalid UTF-8 sequence",
+                            ))))),
+                        }
+                    } else {
+                        // Para TCP normal y TLS, buscamos el final de línea \r\n
+                        let mut bytes = BytesMut::from(&data[..]);
+                        match IRCLinesCodec::new_with_max_length(512).decode(&mut bytes) {
+                            Ok(Some(line)) => Poll::Ready(Some(Ok(line))),
+                            Ok(None) => Poll::Pending,
+                            Err(e) => Poll::Ready(Some(Err(e))),
+                        }
+                    }
+                }
+            }
+            Poll::Ready(Err(e)) => Poll::Ready(Some(Err(LinesCodecError::Io(e)))),
+            Poll::Pending => Poll::Pending,
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        self.stream.size_hint()
+        (0, None)
     }
 }
 

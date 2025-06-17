@@ -19,7 +19,7 @@
 
 use chrono::prelude::*;
 use futures::future::Fuse;
-use futures::FutureExt;
+use futures::{SinkExt, FutureExt};
 #[cfg(feature = "dns_lookup")]
 use lazy_static::lazy_static;
 #[cfg(feature = "tls")]
@@ -42,7 +42,8 @@ use tokio_util::codec::{Framed, LinesCodecError};
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
-use tungstenite::protocol::WebSocketConfig;
+use tokio_tungstenite::WebSocketStream;
+use tokio::io::AsyncWriteExt;
 
 use crate::command::*;
 use crate::config::*;
@@ -164,7 +165,7 @@ impl MainState {
     pub(crate) fn register_conn_state(
         &self,
         ip_addr: IpAddr,
-        stream: Framed<DualTcpStream, IRCLinesCodec>,
+        stream: DualTcpStream
     ) -> Option<ConnState> {
         // Primero verificamos si podemos aceptar más conexiones
         if let Some(max_conns) = self.config.max_connections {
@@ -215,7 +216,7 @@ impl MainState {
                 self.feed_msg(&mut conn_state.stream, "PING :LALAL").await?;
                 conn_state.run_pong_timeout(&self.config);
                 Ok(())
-            }
+            },
             Some(_) = conn_state.timeout_receiver.recv() => {
                 info!("Pong timeout for {}", conn_state.user_state.source);
                 conn_state.user_state.quit_reason = "Pong timeout".to_string();
@@ -223,15 +224,14 @@ impl MainState {
                             "ERROR :Pong timeout, connection will be closed.").await?;
                 conn_state.quit.store(1, Ordering::SeqCst);
                 Ok(())
-            }
+            },
             Ok((killer, comment)) = &mut conn_state.quit_receiver => {
-                let msg = format!("User killed by {}: {}",
-                            killer, comment);
+                let msg = format!("User killed by {}: {}", killer, comment);
                 conn_state.user_state.quit_reason = msg.to_string();
                 self.feed_msg(&mut conn_state.stream, msg).await?;
                 conn_state.quit.store(1, Ordering::SeqCst);
                 Ok(())
-            }
+            },
             Ok(hostname_opt) = &mut conn_state.dns_lookup_receiver => {
                 #[cfg(feature = "dns_lookup")]
                 if let Some(hostname) = hostname_opt {
@@ -246,8 +246,7 @@ impl MainState {
                 #[cfg(not(feature = "dns_lookup"))]
                 info!("Unexpected dns lookup: {:?}", hostname_opt);
                 Ok(())
-            }
-
+            },
             msg_str_res = conn_state.stream.next() => {
                 let msg = match msg_str_res {
                     Some(Ok(ref msg_str)) => {
@@ -272,15 +271,25 @@ impl MainState {
                             }
                         }
                     }
-                    // if line is longer than max line length.
                     Some(Err(LinesCodecError::MaxLineLengthExceeded)) => {
                         let client = conn_state.user_state.client_name();
                         self.feed_msg(&mut conn_state.stream,
                                     ErrInputTooLong417{ client }).await?;
                         return Ok(())
                     },
-                    Some(Err(e)) => return Err(Box::new(e)),
-                    // if end of stream
+                    Some(Err(e)) => {
+                        // Manejar específicamente el caso de bytes restantes
+                        if e.to_string().contains("bytes remaining on stream") {
+                            info!("Bytes restantes en el stream para {}: {}", 
+                                conn_state.user_state.source, e);
+                            // Intentar procesar los bytes restantes
+                            if let Ok(()) = conn_state.stream.flush().await {
+                                return Ok(());
+                            }
+                            return Err(Box::new(e));
+                        }
+                        return Err(Box::new(e));
+                    },
                     None => {
                         conn_state.user_state.quit_reason = "Unexpected eof".to_string();
                         conn_state.quit.store(1, Ordering::SeqCst);
@@ -290,7 +299,10 @@ impl MainState {
                 };
 
                 let cmd = match Command::from_message(&msg) {
-                    Ok(cmd) => cmd,
+                    Ok(cmd) => {
+                        debug!("Comando recibido: {:?}", cmd);
+                        cmd
+                    },
                     // handle errors while parsing command.
                     Err(e) => {
                         use crate::CommandError::*;
@@ -473,8 +485,7 @@ impl MainState {
 
 // main process to handle commands from client.
 async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, addr: SocketAddr) {
-    let line_stream = Framed::new(stream, IRCLinesCodec::new_with_max_length(2000));
-    if let Some(mut conn_state) = main_state.register_conn_state(addr.ip(), line_stream) {
+    if let Some(mut conn_state) = main_state.register_conn_state(addr.ip(), stream) {
         #[cfg(feature = "dns_lookup")]
         if main_state.config.dns_lookup {
             let _ = main_state.feed_msg(
@@ -710,46 +721,14 @@ async fn handle_websocket_connection(
             use std::pin::Pin;
             Pin::new(&mut tls_stream).accept().await?;
             
-            let mut config = WebSocketConfig::default();
-            config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
-            config.max_message_size = Some(1024 * 1024); // 1MB max message size
-            config.accept_unmasked_frames = true;
-            
-            // Verificar el handshake de WebSocket
-            match tokio_tungstenite::accept_async_with_config(tls_stream, Some(config)).await {
-                Ok(ws_stream) => Ok(DualTcpStream::SecureWebSocketStream(ws_stream)),
-                Err(e) => {
-                    error!("Error en handshake de WebSocket: {}", e);
-                    Err(Box::new(e))
-                }
-            }
-        } else {
-            // Si no hay TLS configurado, intentar WebSocket normal
-            handle_plain_websocket(stream).await
+            // Configurar el handshake con los protocolos soportados
+            let ws_stream = tokio_tungstenite::accept_async(tls_stream).await?;
+            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
         }
     }
-    #[cfg(not(feature = "tls"))]
-    {
-        handle_plain_websocket(stream).await
-    }
-}
-
-// Función auxiliar para manejar conexiones WebSocket sin TLS
-async fn handle_plain_websocket(
-    stream: TcpStream,
-) -> Result<DualTcpStream, Box<dyn Error + Send + Sync>> {
-    let mut config = WebSocketConfig::default();
-    config.max_frame_size = Some(1024 * 1024); // 1MB max frame size
-    config.max_message_size = Some(1024 * 1024); // 1MB max message size
-    config.accept_unmasked_frames = true;
-    
-    match tokio_tungstenite::accept_async_with_config(stream, Some(config)).await {
-        Ok(ws_stream) => Ok(DualTcpStream::WebSocketStream(ws_stream)),
-        Err(e) => {
-            error!("Error en handshake de WebSocket: {}", e);
-            Err(Box::new(e))
-        }
-    }
+    // Configurar el handshake con los protocolos soportados
+    let ws_stream = tokio_tungstenite::accept_async(stream).await?;
+    Ok(DualTcpStream::WebSocketStream(ws_stream))
 }
 
 // main routine to run server
