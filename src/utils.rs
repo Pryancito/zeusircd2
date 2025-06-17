@@ -22,18 +22,18 @@ use argon2::password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, Salt
 use argon2::{self, Argon2};
 use bytes::{BufMut, BytesMut};
 use futures::task::{Context, Poll};
-use futures::{Sink, SinkExt, Stream, StreamExt};
+use futures::{Sink, Stream};
 use lazy_static::lazy_static;
 use std::convert::TryFrom;
 use std::error::Error;
 use std::io;
 use std::pin::Pin;
 use tokio::io::ReadBuf;
-use tokio::io::{AsyncRead, AsyncWrite, AsyncReadExt, AsyncWriteExt};
+use tokio::io::{AsyncRead, AsyncWrite, AsyncWriteExt};
 use tokio::net::TcpStream;
 #[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
-use tokio_util::codec::{Decoder, Encoder, Framed, LinesCodec, LinesCodecError};
+use tokio_util::codec::{Decoder, Encoder, LinesCodec, LinesCodecError};
 use validator::ValidationError;
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;

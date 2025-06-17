@@ -19,7 +19,7 @@
 
 use chrono::prelude::*;
 use futures::future::Fuse;
-use futures::{SinkExt, FutureExt};
+use futures::FutureExt;
 #[cfg(feature = "dns_lookup")]
 use lazy_static::lazy_static;
 #[cfg(feature = "tls")]
@@ -38,12 +38,10 @@ use tokio::task::JoinHandle;
 #[cfg(feature = "tls")]
 use tokio_openssl::SslStream;
 use tokio_stream::StreamExt;
-use tokio_util::codec::{Framed, LinesCodecError};
+use tokio_util::codec::LinesCodecError;
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
-use tokio_tungstenite::WebSocketStream;
-use tokio::io::AsyncWriteExt;
 
 use crate::command::*;
 use crate::config::*;

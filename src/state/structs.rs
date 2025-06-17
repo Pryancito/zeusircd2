@@ -18,7 +18,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 use flagset::{flags, FlagSet};
-use futures::{future::Fuse, future::FutureExt, SinkExt, StreamExt};
+use futures::{future::Fuse, future::FutureExt};
 use std::collections::{HashMap, HashSet};
 use std::fmt;
 use std::net::IpAddr;
@@ -29,12 +29,8 @@ use tokio::sync::mpsc::error::SendError;
 use tokio::sync::mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender};
 use tokio::sync::oneshot;
 use tokio::time;
-use tokio_util::codec::Framed;
 use tracing::*;
 use sha2::{Sha256, Digest};
-use tokio_tungstenite::WebSocketStream;
-use tokio_openssl::SslStream;
-use tokio::net::TcpStream;
 
 use crate::command::*;
 use crate::config::*;
@@ -331,6 +327,8 @@ impl Clone for User {
             last_activity: self.last_activity,
             signon: self.signon,
             history_entry: self.history_entry.clone(),
+            #[cfg(feature = "amqp")]
+            server: self.server.clone(),
         }
     }
 }
