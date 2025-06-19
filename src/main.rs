@@ -30,6 +30,7 @@ use clap::Parser;
 use rpassword::prompt_password;
 use std::error::Error;
 use tracing::error;
+#[cfg(unix)]
 use daemonize::Daemonize;
 
 use command::*;
@@ -121,6 +122,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     
     // Si se solicita demonización, hacerlo ANTES de cualquier inicialización
+    #[cfg(unix)]
     if cli.background {
         let daemonize = Daemonize::new()
             .pid_file("./ircd.pid")

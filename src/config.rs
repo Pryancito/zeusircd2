@@ -59,6 +59,7 @@ pub(crate) struct Cli {
     tls_cert_key_file: Option<String>,
     #[clap(short = 'L', long, help = "Log file path")]
     log_file: Option<String>,
+    #[cfg(unix)]
     #[clap(short = 'b', long, help = "Run as background (daemon)")]
     pub(crate) background: bool,
 }
