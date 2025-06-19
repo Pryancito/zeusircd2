@@ -30,6 +30,7 @@ use clap::Parser;
 use rpassword::prompt_password;
 use std::error::Error;
 use tracing::error;
+use daemonize::Daemonize;
 
 use command::*;
 use config::*;
@@ -116,9 +117,31 @@ impl DBState {
     }
 }
 
-#[tokio::main(flavor = "multi_thread")]
-async fn main() -> Result<(), Box<dyn Error>> {
+fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
+    
+    // Si se solicita demonización, hacerlo ANTES de cualquier inicialización
+    if cli.background {
+        let daemonize = Daemonize::new()
+            .pid_file("./ircd.pid")
+            .chown_pid_file(true)
+            .working_directory("./");
+        match daemonize.start() {
+            Ok(_) => {
+                println!("ZeusiRCd2 daemon started successfully");
+            }
+            Err(e) => {
+                eprintln!("Failed to start daemon: {}", e);
+                std::process::exit(1);
+            }
+        }
+    }
+
+    tokio_main(cli)
+}
+
+#[tokio::main(flavor = "multi_thread")]
+async fn tokio_main(cli: Cli) -> Result<(), Box<dyn Error>> {
     if cli.gen_password_hash {
         let password = if let Some(pwd) = cli.password {
             pwd
