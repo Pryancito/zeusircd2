@@ -30,6 +30,7 @@ use clap::Parser;
 use rpassword::prompt_password;
 use std::error::Error;
 use tracing::error;
+use daemonize::Daemonize;
 
 use command::*;
 use config::*;
@@ -119,6 +120,14 @@ impl DBState {
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
+    #[cfg(unix)]
+    if cli.background {
+        let daemonize = Daemonize::new();
+        match daemonize.start() {
+            Ok(_) => println!("Running as daemon"),
+            Err(e) => eprintln!("{}", e),
+        }
+    }
     if cli.gen_password_hash {
         let password = if let Some(pwd) = cli.password {
             pwd

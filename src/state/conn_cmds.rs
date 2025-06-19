@@ -609,7 +609,7 @@ impl super::MainState {
 
             if do_it {
                 // do it if all is ok.
-                user.modes.oper = true;
+                user.modes.local_oper = true;
                 state.operators_count += 1;
                 info!("New IRC operator {}", conn_state.user_state.source);
                 self.feed_msg(&mut conn_state.stream, RplYoureOper381 { client })
@@ -660,6 +660,7 @@ impl super::MainState {
             {
                 let mut state = self.state.write().await;
                 state.remove_user(nick);
+                conn_state.quit.store(1, Ordering::SeqCst);
             }
         } else {
             conn_state.quit.store(1, Ordering::SeqCst);

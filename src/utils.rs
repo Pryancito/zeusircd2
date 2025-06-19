@@ -84,10 +84,10 @@ impl AsyncRead for DualTcpStream {
         buf: &mut ReadBuf<'_>,
     ) -> Poll<io::Result<()>> {
         match self.get_mut() {
-            DualTcpStream::PlainStream(ref mut t) => Pin::new(t).poll_read(cx, buf),
+            DualTcpStream::PlainStream(t) => Pin::new(t).poll_read(cx, buf),
             #[cfg(feature = "tls")]
-            DualTcpStream::SecureStream(ref mut t) => Pin::new(t).poll_read(cx, buf),
-            DualTcpStream::WebSocketStream(ref mut t) => {
+            DualTcpStream::SecureStream(t) => Pin::new(t).poll_read(cx, buf),
+            DualTcpStream::WebSocketStream(t) => {
                 match Pin::new(t).poll_next(cx) {
                     Poll::Ready(Some(Ok(Message::Text(text)))) => {
                         buf.put_slice(text.as_bytes());
@@ -100,7 +100,7 @@ impl AsyncRead for DualTcpStream {
                 }
             }
             #[cfg(feature = "tls")]
-            DualTcpStream::SecureWebSocketStream(ref mut t) => {
+            DualTcpStream::SecureWebSocketStream(t) => {
                 match Pin::new(t).poll_next(cx) {
                     Poll::Ready(Some(Ok(Message::Text(text)))) => {
                         buf.put_slice(text.as_bytes());

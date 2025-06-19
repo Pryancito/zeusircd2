@@ -839,7 +839,6 @@ pub(crate) async fn run_server(
     #[cfg(feature = "amqp")]
     let _ = main_state.serv_comm.write().await.start_consuming().await;
 
-    println!("Server Started...");
     Ok((main_state_to_return, handles))
 }
 
