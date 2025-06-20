@@ -32,7 +32,7 @@ impl super::MainState {
         notice: bool,
     ) -> Result<(), Box<dyn Error>> {
         let client = conn_state.user_state.client_name();
-        let user_nick = conn_state.user_state.nick.as_ref().unwrap();
+        let user_nick = conn_state.user_state.nick.as_ref().unwrap().to_string();
 
         let mut something_done = false;
         {
@@ -48,7 +48,7 @@ impl super::MainState {
                 if target_type.contains(PrivMsgTargetType::Channel) {
                     // to channel
                     if let Some(chanobj) = state.channels.get(chan_str) {
-                        let chanuser_mode = chanobj.users.get(user_nick);
+                        let chanuser_mode = chanobj.users.get(&user_nick);
                         // check whether can send from outside channel
                         let can_send = {
                             if (!chanobj.modes.no_external_messages && !chanobj.modes.secret)
@@ -105,7 +105,7 @@ impl super::MainState {
                                 if !(target_type & ChannelFounder).is_empty() {
                                     if let Some(ref founders) = chanobj.modes.founders {
                                         founders.iter().try_for_each(|u| {
-                                            if u != user_nick {
+                                            if u != &user_nick {
                                                 state.users.get(u).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
@@ -119,7 +119,7 @@ impl super::MainState {
                                 if !(target_type & ChannelProtected).is_empty() {
                                     if let Some(ref protecteds) = chanobj.modes.protecteds {
                                         protecteds.iter().try_for_each(|u| {
-                                            if u != user_nick {
+                                            if u != &user_nick {
                                                 state.users.get(u).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
@@ -133,7 +133,7 @@ impl super::MainState {
                                 if !(target_type & ChannelOper).is_empty() {
                                     if let Some(ref operators) = chanobj.modes.operators {
                                         operators.iter().try_for_each(|u| {
-                                            if u != user_nick {
+                                            if u != &user_nick {
                                                 state.users.get(u).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
@@ -147,7 +147,7 @@ impl super::MainState {
                                 if !(target_type & ChannelHalfOper).is_empty() {
                                     if let Some(ref half_ops) = chanobj.modes.half_operators {
                                         half_ops.iter().try_for_each(|u| {
-                                            if u != user_nick {
+                                            if u != &user_nick {
                                                 state.users.get(u).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
@@ -161,7 +161,7 @@ impl super::MainState {
                                 if !(target_type & ChannelVoice).is_empty() {
                                     if let Some(ref voices) = chanobj.modes.voices {
                                         voices.iter().try_for_each(|u| {
-                                            if u != user_nick {
+                                            if u != &user_nick {
                                                 state.users.get(u).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
@@ -175,7 +175,7 @@ impl super::MainState {
                             } else {
                                 // send to all users
                                 chanobj.users.keys().try_for_each(|u| {
-                                    if u != user_nick {
+                                    if u != &user_nick {
                                         state.users.get(u).unwrap().send_msg_display(
                                             &conn_state.user_state.source,
                                             &msg_str,
@@ -204,6 +204,7 @@ impl super::MainState {
                     }
                 } else {
                     // to user
+                    let client = conn_state.user_state.client_name();
                     if let Some(cur_user) = state.users.get(*target) {
                         cur_user.send_msg_display(&conn_state.user_state.source, &msg_str)?;
                         if !notice {
@@ -241,7 +242,7 @@ impl super::MainState {
             // update last activity if something sent
             if something_done {
                 let mut state = self.state.write().await;
-                let user = state.users.get_mut(user_nick).unwrap();
+                let user = state.users.get_mut(&user_nick).unwrap();
                 user.last_activity = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()

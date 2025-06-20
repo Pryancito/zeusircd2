@@ -39,9 +39,9 @@ use state::*;
 use utils::*;
 
 #[cfg(feature = "sqlite")]
-use crate::database::sqlite::sqlite_impl::{SQLiteNickDatabase, SQLiteChannelDatabase};
+use crate::database::sqlite::{SQLiteChannelDatabase, SQLiteNickDatabase};
 #[cfg(feature = "mysql")]
-use crate::database::mysql::mysql_impl::{MySqlNickDatabase, MySqlChannelDatabase};
+use crate::database::mysql::{MySQLNickDatabase, MySQLChannelDatabase};
 #[cfg(any(feature = "mysql", feature = "sqlite"))]
 use crate::database::{NickDatabase, ChannelDatabase};
 #[cfg(any(feature = "mysql", feature = "sqlite"))]
@@ -55,65 +55,44 @@ pub struct DBState {
 #[cfg(any(feature = "mysql", feature = "sqlite"))]
 impl DBState {
     pub(crate) async fn new(config: &MainConfig) -> Self {
-        let db_config_option = &config.database;
+        let db_config = config.database.as_ref().unwrap();
 
-        if let Some(db_config) = db_config_option {
-            let _nick_db: Result<Box<dyn NickDatabase + Send + Sync>, String> = match db_config.database.as_str() {
+        let (nick_db, chan_db): (
+            Option<Arc<Mutex<dyn NickDatabase + Send + Sync>>>,
+            Option<Arc<Mutex<dyn ChannelDatabase + Send + Sync>>>,
+        ) = match db_config.db_type.as_str() {
+            "sqlite" => {
                 #[cfg(feature = "sqlite")]
-                "sqlite" => {
-                    let path = &db_config.url;
-                    let mut db = SQLiteNickDatabase::new(path);
-                    let _ = db.connect("")
-                        .await
-                        .map_err(|e| format!("Failed to connect to SQLite: {}", e));
-                    Ok(Box::new(db))
+                {
+                    let nick_db = SQLiteNickDatabase::new().expect("failed to open nick database");
+                    let chan_db = SQLiteChannelDatabase::new().expect("failed to open channel database");
+                    (Some(Arc::new(Mutex::new(nick_db))), Some(Arc::new(Mutex::new(chan_db))))
                 }
-                #[cfg(feature = "mysql")]
-                "mysql" => {
-                    let url = &db_config.url;
-                    let mut db = MySqlNickDatabase::new(url);
-                    let _ = db.connect("")
-                        .await
-                        .map_err(|e| format!("Failed to connect to MySQL: {}", e));
-                    Ok(Box::new(db))
-                }
-                db_type => Err(format!("Unsupported database type: {}", db_type)),
-            };
-
-            let _channel_db: Result<Box<dyn ChannelDatabase + Send + Sync>, String> = match db_config.database.as_str() {
-                #[cfg(feature = "sqlite")]
-                "sqlite" => {
-                    let path = &db_config.url;
-                    let mut db = SQLiteChannelDatabase::new(path);
-                    let _ = db.connect("")
-                        .await
-                        .map_err(|e| format!("Failed to connect to SQLite: {}", e));
-                    Ok(Box::new(db))
-                }
-                #[cfg(feature = "mysql")]
-                "mysql" => {
-                    let url = &db_config.url;
-                    let mut db = MySqlChannelDatabase::new(url);
-                    let _ = db.connect("")
-                        .await
-                        .map_err(|e| format!("Failed to connect to MySQL: {}", e));
-                    Ok(Box::new(db))
-                }
-                db_type => Err(format!("Unsupported database type: {}", db_type)),
-            };
-
-            let mut nick_db = _nick_db.expect("Failed to initialize nick database");
-            let mut channel_db = _channel_db.expect("Failed to initialize channel database");
-
-            nick_db.create_table().await.expect("Failed to create nick table");
-            channel_db.create_table().await.expect("Failed to create channel table");
-
-            DBState {
-                nick_db: Arc::new(Mutex::new(nick_db)),
-                channel_db: Arc::new(Mutex::new(channel_db)),
+                #[cfg(not(feature = "sqlite"))]
+                panic!("SQLite support is required for SQLite database");
             }
-        } else {
-            panic!("Database configuration is missing."); // Or handle this more gracefully
+            "mysql" => {
+                #[cfg(feature = "mysql")]
+                {
+                    let nick_db = MySQLNickDatabase::new(&db_config.db_name).await.expect("failed to open nick database");
+                    let chan_db = MySQLChannelDatabase::new(&db_config.db_name).await.expect("failed to open channel database");
+                    (Some(Arc::new(Mutex::new(nick_db))), Some(Arc::new(Mutex::new(chan_db))))
+                }
+                #[cfg(not(feature = "mysql"))]
+                panic!("MySQL support is required for MySQL database");
+            }
+            db_type => Err(format!("Unsupported database type: {}", db_type)),
+        };
+
+        let mut nick_db = nick_db.expect("Failed to initialize nick database");
+        let mut channel_db = chan_db.expect("Failed to initialize channel database");
+
+        nick_db.create_table().await.expect("Failed to create nick table");
+        channel_db.create_table().await.expect("Failed to create channel table");
+
+        DBState {
+            nick_db: Arc::new(Mutex::new(nick_db)),
+            channel_db: Arc::new(Mutex::new(channel_db)),
         }
     }
 }

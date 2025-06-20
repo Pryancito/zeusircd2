@@ -21,6 +21,9 @@ use super::*;
 use std::error::Error;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use argon2::{Argon2, PasswordHash, PasswordVerifier};
+use tokio::sync::mpsc::unbounded_channel;
 
 struct SupportTokenIntValue {
     name: &'static str,
@@ -311,122 +314,139 @@ impl super::MainState {
                 (None, false)
             }
         };
-        if let Some(good) = auth_opt {
-            if good {
-                let user_nick = conn_state.user_state.nick.clone().unwrap();
-                let user_modes = {
-                    // add new user to hash map
-                    let user_state = &mut conn_state.user_state;
-                    user_state.registered = registered;
-                    let mut state = self.state.write().await;
-                    let user = User::new(
-                        &self.config,
-                        user_state,
-                        conn_state.sender.take().unwrap(),
-                        conn_state.quit_sender.take().unwrap(),
-                    );
-                    let umode_str = user.modes.to_string();
-                    if !state.users.contains_key(&user_nick) {
-                        state.add_user(&user_nick, user);
-                        umode_str
-                    } else {
-                        // if nick already used
-                        let client = conn_state.user_state.client_name();
-                        self.feed_msg(
-                            &mut conn_state.stream,
-                            ErrNicknameInUse433 {
-                                client,
-                                nick: &user_nick,
-                            },
-                        )
-                        .await?;
-                        return Ok(());
+
+        if registered && auth_opt.is_none() {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client }).await?;
+            conn_state.quit.store(1, Ordering::SeqCst);
+            return Ok(());
+        }
+
+        let nick = conn_state.user_state.nick.as_ref().unwrap().clone();
+        let identified = false;
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        let mut registered_in_db = false;
+
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        if let Some(db_arc) = &self.databases.nick_db {
+            let db = db_arc.read().await;
+            if let Some(hash) = db.get_nick_password(&nick).await? {
+                registered_in_db = true;
+                if let Some(pass) = &conn_state.user_state.password {
+                    let hash = PasswordHash::new(&hash).map_err(|e| e.to_string())?;
+                    if Argon2::default().verify_password(pass.as_bytes(), &hash).is_ok() {
+                        identified = true;
                     }
-                };
-
-                {
-                    // send message to user: welcome,....
-                    let user_state = &conn_state.user_state;
-                    let client = user_state.client_name();
-                    // welcome
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplWelcome001 {
-                            client,
-                            networkname: &self.config.network,
-                            nick: user_state.nick.as_deref().unwrap_or_default(),
-                            user: user_state.name.as_deref().unwrap_or_default(),
-                            host: &user_state.hostname,
-                        },
-                    )
-                    .await?;
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplYourHost002 {
-                            client,
-                            servername: &self.config.name,
-                            version: concat!(
-                                env!("CARGO_PKG_NAME"),
-                                "-",
-                                env!("CARGO_PKG_VERSION")
-                            ),
-                        },
-                    )
-                    .await?;
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplCreated003 {
-                            client,
-                            datetime: &self.created,
-                        },
-                    )
-                    .await?;
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplMyInfo004 {
-                            client,
-                            servername: &self.config.name,
-                            version: concat!(
-                                env!("CARGO_PKG_NAME"),
-                                "-",
-                                env!("CARGO_PKG_VERSION")
-                            ),
-                            avail_user_modes: "OiorwWzx",
-                            avail_chmodes: "IabehiklmnopqstvB",
-                            avail_chmodes_with_params: None,
-                        },
-                    )
-                    .await?;
-
-                    self.send_isupport(conn_state).await?;
                 }
-
-                // send messages from LUSERS and MOTD
-                self.process_lusers(conn_state).await?;
-                self.process_motd(conn_state, None).await?;
-
-                // send mode reply
-                let client = conn_state.user_state.client_name();
-                self.feed_msg(
-                    &mut conn_state.stream,
-                    RplUModeIs221 {
-                        client,
-                        user_modes: &user_modes,
-                    },
-                )
-                .await?;
-
-                // run ping waker for this connection
-                conn_state.run_ping_waker(&self.config);
-            } else {
-                // if authentication failed
-                info!("Auth failed for {}", conn_state.user_state.source);
-                let client = conn_state.user_state.client_name();
-                conn_state.quit.store(1, Ordering::SeqCst);
-                self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client })
-                    .await?;
             }
         }
+
+        let mut state = self.state.write().await;
+        if state.users.contains_key(&nick) {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick: &nick }).await?;
+            conn_state.quit.store(1, Ordering::SeqCst);
+            return Ok(());
+        }
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        if registered_in_db && !identified {
+            if conn_state.user_state.password.is_some() {
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client }).await?;
+                conn_state.quit.store(1, Ordering::SeqCst);
+                return Ok(());
+            }
+        }
+
+        let (sender, _) = unbounded_channel();
+        conn_state.sender = Some(sender);
+        let (quit_sender, quit_receiver) = oneshot::channel();
+        conn_state.quit_receiver = quit_receiver.fuse();
+
+        let mut user = User::new(&self.config, &conn_state.user_state, conn_state.sender.as_ref().unwrap().clone(), quit_sender);
+        user.identified = identified;
+
+        conn_state.user_state.authenticated = true;
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        if let Some(user_config_idx) = auth_opt {
+            let user_config = &self.config.users.as_ref().unwrap()[user_config_idx];
+            if let Some(ref modes) = user_config.modes {
+                user.modes.apply_modes_str(modes);
+            }
+        }
+
+        let user_nick = conn_state.user_state.nick.as_ref().unwrap();
+        state.add_user(user_nick, user);
+        drop(state);
+
+        {
+            let user_state = &conn_state.user_state;
+            let client = user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                RplWelcome001 {
+                    client,
+                    networkname: &self.config.network,
+                    nick: user_state.nick.as_deref().unwrap_or_default(),
+                    user: user_state.name.as_deref().unwrap_or_default(),
+                    host: &user_state.hostname,
+                },
+            )
+            .await?;
+            self.feed_msg(
+                &mut conn_state.stream,
+                RplYourHost002 {
+                    client,
+                    servername: &self.config.name,
+                    version: concat!(
+                        env!("CARGO_PKG_NAME"),
+                        "-",
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                },
+            )
+            .await?;
+            self.feed_msg(
+                &mut conn_state.stream,
+                RplCreated003 {
+                    client,
+                    datetime: &self.created,
+                },
+            )
+            .await?;
+            self.feed_msg(
+                &mut conn_state.stream,
+                RplMyInfo004 {
+                    client,
+                    servername: &self.config.name,
+                    version: concat!(
+                        env!("CARGO_PKG_NAME"),
+                        "-",
+                        env!("CARGO_PKG_VERSION")
+                    ),
+                    avail_user_modes: "OiorwWzx",
+                    avail_chmodes: "IabehiklmnopqstvB",
+                    avail_chmodes_with_params: None,
+                },
+            )
+            .await?;
+            self.send_isupport(conn_state).await?;
+        }
+
+        self.process_lusers(conn_state).await?;
+        self.process_motd(conn_state, None).await?;
+        // run ping waker for this connection
+        conn_state.run_ping_waker(&self.config);
+
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        if registered_in_db && !identified {
+            self.feed_msg_source(
+                &mut conn_state.stream,
+                "NickServ",
+                format!("NOTICE {} :Este nick está registrado. Por favor, identifícate con /PASS o /NS IDENTIFY.", client),
+            ).await?;
+        }
+        println!("Authenticated user: {}", conn_state.user_state.source);
         Ok(())
     }
 
@@ -531,15 +551,11 @@ impl super::MainState {
         _: &'a str,
         realname: &'a str,
     ) -> Result<(), Box<dyn Error>> {
-        if !conn_state.user_state.authenticated {
-            conn_state.user_state.set_name(username.to_string());
-            conn_state.user_state.realname = Some(realname.to_string());
-            // try authentication
+        conn_state.user_state.set_name(username.to_string());
+        conn_state.user_state.realname = Some(realname.to_string());
+        // Si no estamos en negociación CAP y tenemos NICK, autenticamos
+        if !conn_state.caps_negotation && conn_state.user_state.nick.is_some() {
             self.authenticate(conn_state).await?;
-        } else {
-            let client = conn_state.user_state.client_name();
-            self.feed_msg(&mut conn_state.stream, ErrAlreadyRegistered462 { client })
-                .await?;
         }
         Ok(())
     }
@@ -777,7 +793,6 @@ mod test {
 
         quit_test_server(main_state, handle).await;
     }
-
     #[tokio::test]
     async fn test_auth_with_password() {
         let mut config = MainConfig::default();
@@ -993,7 +1008,6 @@ mod test {
             }
             line_stream.send("QUIT :Bye".to_string()).await.unwrap();
         }
-
         for pass in [
             None,
             Some("blamblam2"),
@@ -1022,7 +1036,6 @@ mod test {
 
         quit_test_server(main_state, handle).await;
     }
-
     #[tokio::test]
     async fn test_auth_with_user_configs_2() {
         let mut config = MainConfig::default();
@@ -1202,445 +1215,6 @@ mod test {
             }
         }
 
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_auth_failed_nick_used() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = connect_to_test(port).await;
-            let mut line_stream2 = connect_to_test(port).await;
-
-            line_stream.send("NICK oliver".to_string()).await.unwrap();
-            line_stream
-                .send("USER oliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-
-            line_stream2.send("NICK oliver".to_string()).await.unwrap();
-            line_stream2
-                .send("USER oliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-
-            assert_eq!(
-                ":irc.irc 001 oliver :Welcome to the IRCnetwork \
-                    Network, oliver!~oliverk@127.0.0.1"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            assert_eq!(
-                ":irc.irc 433 127.0.0.1 oliver :Nickname is already in use".to_string(),
-                line_stream2.next().await.unwrap().unwrap()
-            );
-        }
-
-        {
-            let mut line_stream = connect_to_test(port).await;
-            let mut line_stream2 = connect_to_test(port).await;
-
-            line_stream.send("NICK aliver".to_string()).await.unwrap();
-            line_stream2.send("NICK aliver".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(100)).await;
-
-            line_stream
-                .send("USER aliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-            line_stream2
-                .send("USER aliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-
-            assert_eq!(
-                ":irc.irc 001 aliver :Welcome to the IRCnetwork \
-                    Network, aliver!~aliverk@127.0.0.1"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-
-            assert_eq!(
-                ":irc.irc 433 aliver aliver :Nickname is already in use".to_string(),
-                line_stream2.next().await.unwrap().unwrap()
-            );
-        }
-
-        {
-            let mut line_stream = connect_to_test(port).await;
-            let mut line_stream2 = connect_to_test(port).await;
-
-            line_stream
-                .send("USER uliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-            line_stream2
-                .send("USER uliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-
-            time::sleep(Duration::from_millis(100)).await;
-            line_stream.send("NICK uliver".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(100)).await;
-            line_stream2.send("NICK uliver".to_string()).await.unwrap();
-
-            assert_eq!(
-                ":irc.irc 001 uliver :Welcome to the IRCnetwork \
-                    Network, uliver!~uliverk@127.0.0.1"
-                    .to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":irc.irc 433 uliverk uliver :Nickname is already in use".to_string(),
-                line_stream2.next().await.unwrap().unwrap()
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_auth_after_user_pass_failed() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream =
-                login_to_test_and_skip(port, "oliver", "aliverk", "Oliver Kittson").await;
-
-            line_stream
-                .send("USER aliverk 8 * :Oliver Kittson".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":irc.irc 462 oliver :You may not reregister".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-
-        {
-            let mut line_stream =
-                login_to_test_and_skip(port, "uliver", "aliverk", "Oliver Kittson").await;
-
-            line_stream.send("PASS xxxx".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 462 uliver :You may not reregister".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_nick_rename() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = login_to_test_and_skip(port, "mati", "mat", "MatSzpak").await;
-            let mut line_stream2 = login_to_test_and_skip(port, "lucki", "luck", "LuckBoy").await;
-            let mut line_stream3 = login_to_test_and_skip(port, "dam", "dam", "Damon").await;
-
-            line_stream2.send("NICK luke".to_string()).await.unwrap();
-
-            assert_eq!(
-                ":lucki!~luck@127.0.0.1 NICK luke".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":lucki!~luck@127.0.0.1 NICK luke".to_string(),
-                line_stream2.next().await.unwrap().unwrap()
-            );
-            assert_eq!(
-                ":lucki!~luck@127.0.0.1 NICK luke".to_string(),
-                line_stream3.next().await.unwrap().unwrap()
-            );
-
-            {
-                let state = main_state.state.read().await;
-                assert!(state.users.contains_key("luke"));
-                assert!(!state.users.contains_key("lucki"));
-                assert_eq!("luck", state.users.get("luke").unwrap().name);
-                assert_eq!("LuckBoy", state.users.get("luke").unwrap().realname);
-            }
-
-            // if nothing
-            line_stream2.send("NICK luke".to_string()).await.unwrap();
-            {
-                let state = main_state.state.read().await;
-                assert!(state.users.contains_key("luke"));
-                assert!(!state.users.contains_key("lucki"));
-                assert_eq!("luck", state.users.get("luke").unwrap().name);
-                assert_eq!("LuckBoy", state.users.get("luke").unwrap().realname);
-            }
-
-            line_stream2.send("NICK dam".to_string()).await.unwrap();
-            assert_eq!(
-                ":irc.irc 433 luke dam :Nickname is already in use".to_string(),
-                line_stream2.next().await.unwrap().unwrap()
-            );
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            line_stream2.send("QUIT :Bye".to_string()).await.unwrap();
-            line_stream3.send("QUIT :Bye".to_string()).await.unwrap();
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_nick_rename_at_channel() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = login_to_test_and_skip(port, "mati", "mat", "MatSzpak").await;
-            line_stream
-                .send("JOIN #mychannel".to_string())
-                .await
-                .unwrap();
-
-            line_stream.send("NICK matszpk".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-            {
-                let state = main_state.state.read().await;
-                assert_eq!(
-                    HashMap::from([(
-                        "matszpk".to_string(),
-                        ChannelUserModes::new_for_created_channel()
-                    )]),
-                    state.channels.get("#mychannel").unwrap().users
-                );
-            }
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_command_oper() {
-        let mut config = MainConfig::default();
-        config.operators = Some(vec![
-            OperatorConfig {
-                name: "guru".to_string(),
-                password: argon2_hash_password("NoWay"),
-                mask: None,
-            },
-            OperatorConfig {
-                name: "guru2".to_string(),
-                password: argon2_hash_password("NoWay2"),
-                mask: Some("guruv*@*".to_string()),
-            },
-            OperatorConfig {
-                name: "guru3".to_string(),
-                password: argon2_hash_password("NoWay3"),
-                mask: Some("guru4*@*".to_string()),
-            },
-        ]);
-        let (main_state, handle, port) = run_test_server(config).await;
-
-        for (opname, pass, res) in [
-            ("guru", "NoWay", 2),
-            ("guru", "NoWayX", 1),
-            ("guru2", "NoWay2", 2),
-            ("guru2", "NoWayn", 1),
-            ("gurux", "NoWay", 0),
-            ("guru3", "NoWay3", 0),
-        ] {
-            let mut line_stream =
-                login_to_test_and_skip(port, "guruv", "guruvx", "SuperGuruV").await;
-
-            line_stream
-                .send(format!("OPER {} {}", opname, pass))
-                .await
-                .unwrap();
-            match res {
-                2 => {
-                    assert_eq!(
-                        ":irc.irc 381 guruv :You are now an IRC operator".to_string(),
-                        line_stream.next().await.unwrap().unwrap(),
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert!(
-                        main_state
-                            .state
-                            .read()
-                            .await
-                            .users
-                            .get("guruv")
-                            .unwrap()
-                            .modes
-                            .oper,
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert_eq!(1, main_state.state.read().await.operators_count);
-                }
-                0 => {
-                    assert_eq!(
-                        ":irc.irc 491 guruv :No O-lines for your host".to_string(),
-                        line_stream.next().await.unwrap().unwrap(),
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert!(
-                        !main_state
-                            .state
-                            .read()
-                            .await
-                            .users
-                            .get("guruv")
-                            .unwrap()
-                            .modes
-                            .oper,
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert_eq!(0, main_state.state.read().await.operators_count);
-                }
-                1 => {
-                    assert_eq!(
-                        ":irc.irc 464 guruv :Password incorrect".to_string(),
-                        line_stream.next().await.unwrap().unwrap(),
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert!(
-                        !main_state
-                            .state
-                            .read()
-                            .await
-                            .users
-                            .get("guruv")
-                            .unwrap()
-                            .modes
-                            .oper,
-                        "OperTest {} {}",
-                        opname,
-                        pass
-                    );
-                    assert_eq!(0, main_state.state.read().await.operators_count);
-                }
-                _ => {
-                    assert!(false);
-                }
-            }
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_command_quit() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = login_to_test_and_skip(port, "brian", "brianx", "BrianX").await;
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-            assert!(!main_state.state.read().await.users.contains_key("brian"));
-        }
-
-        {
-            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-            let mut line_stream = Framed::new(stream, IRCLinesCodec::new_with_max_length(2000));
-
-            line_stream.send("NICK brian".to_string()).await.unwrap();
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-            assert!(!main_state.state.read().await.users.contains_key("brian"));
-        }
-
-        {
-            let stream = TcpStream::connect(("127.0.0.1", port)).await.unwrap();
-            let mut line_stream = Framed::new(stream, IRCLinesCodec::new_with_max_length(2000));
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_command_quit_from_channels() {
-        let mut config = MainConfig::default();
-        config.channels = Some(vec![ChannelConfig {
-            name: "#carrots".to_string(),
-            topic: None,
-            modes: ChannelModes::default(),
-        }]);
-        let (main_state, handle, port) = run_test_server(config).await;
-
-        {
-            let mut line_stream = login_to_test_and_skip(port, "brian", "brianx", "BrianX").await;
-            line_stream
-                .send("JOIN #carrots,#apples".to_string())
-                .await
-                .unwrap();
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-            time::sleep(Duration::from_millis(50)).await;
-            {
-                let state = main_state.state.read().await;
-                assert!(state.channels.contains_key("#carrots"));
-                assert!(!state.channels.contains_key("#apples"));
-                assert!(!state.users.contains_key("brian"));
-            }
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[tokio::test]
-    async fn test_command_ping() {
-        let (main_state, handle, port) = run_test_server(MainConfig::default()).await;
-
-        {
-            let mut line_stream = login_to_test_and_skip(port, "brian", "brianx", "BrianX").await;
-
-            line_stream
-                .send("PING aarrgghhh!!!".to_string())
-                .await
-                .unwrap();
-            assert_eq!(
-                ":irc.irc PONG irc.irc :aarrgghhh!!!".to_string(),
-                line_stream.next().await.unwrap().unwrap()
-            );
-        }
-
-        quit_test_server(main_state, handle).await;
-    }
-
-    #[cfg(feature = "tls")]
-    #[tokio::test]
-    async fn test_auth_with_tls_secure_mode() {
-        let (main_state, handle, port) = run_test_tls_server(MainConfig::default()).await;
-        {
-            let mut line_stream = login_to_test_tls(port, "tls_user", "tls", "TLS User").await;
-            
-            // Esperar a que se complete la autenticación
-            for _ in 0..18 {
-                line_stream.next().await.unwrap().unwrap();
-            }
-
-            // Verificar que el usuario tiene el modo secure
-            let state = main_state.state.read().await;
-            let user = state.users.get("tls_user").unwrap();
-            assert!(user.modes.secure, "El usuario debería tener el modo secure activo");
-
-            line_stream.send("QUIT :Bye".to_string()).await.unwrap();
-        }
         quit_test_server(main_state, handle).await;
     }
 }

@@ -47,12 +47,20 @@ use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use crate::database::{self, ChannelDatabase, NickDatabase};
 #[cfg(feature = "amqp")]
 use crate::state::server_communication::ServerCommunication;
 use Reply::*;
 
 mod structs;
 pub(crate) use structs::*;
+
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+pub(crate) struct Databases {
+    pub(crate) nick_db: Option<Arc<RwLock<Box<dyn NickDatabase>>>>,
+    pub(crate) chan_db: Option<Arc<RwLock<Box<dyn ChannelDatabase>>>>,
+}
 
 pub(crate) struct MainState {
     config: MainConfig,
@@ -62,6 +70,8 @@ pub(crate) struct MainState {
     oper_config_idxs: HashMap<String, usize>,
     conns_count: Arc<AtomicUsize>,
     state: Arc<RwLock<VolatileState>>,
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    databases: Databases,
     #[cfg(feature = "amqp")]
     serv_comm: RwLock<ServerCommunication>,
     created: String,
@@ -85,6 +95,39 @@ impl MainState {
             });
         }
         let state = Arc::new(RwLock::new(VolatileState::new_from_config(&config)));
+        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+        let databases = if let Some(db_config) = &config.database {
+            let (mut nick_db, mut chan_db): (Box<dyn NickDatabase>, Box<dyn ChannelDatabase>) =
+                match db_config.db_type.as_str() {
+                    #[cfg(feature = "sqlite")]
+                    "sqlite" => (
+                        Box::new(database::sqlite::SQLiteNickDatabase::new()),
+                        Box::new(database::sqlite::SQLiteChannelDatabase::new()),
+                    ),
+                    #[cfg(feature = "mysql")]
+                    "mysql" => (
+                        Box::new(database::mysql::MysqlNickDatabase::new()),
+                        Box::new(database::mysql::MysqlChannelDatabase::new()),
+                    ),
+                    _ => return Err("Unsupported database type".to_string()),
+                };
+
+            nick_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
+            nick_db.create_table().await.map_err(|e| e.to_string())?;
+
+            chan_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
+            chan_db.create_table().await.map_err(|e| e.to_string())?;
+
+            Databases {
+                nick_db: Some(Arc::new(RwLock::new(nick_db))),
+                chan_db: Some(Arc::new(RwLock::new(chan_db))),
+            }
+        } else {
+            Databases {
+                nick_db: None,
+                chan_db: None,
+            }
+        };
         #[cfg(feature = "amqp")]
         let serv_comm = {
             RwLock::new(ServerCommunication::new(
@@ -102,6 +145,8 @@ impl MainState {
             user_config_idxs,
             oper_config_idxs,
             state,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            databases,
             #[cfg(feature = "amqp")]
             serv_comm,
             conns_count,
@@ -433,6 +478,16 @@ impl MainState {
                         self.process_die(conn_state, message).await,
                     SERVERS{ target } => 
                         self.process_servers(conn_state, target.as_deref()).await,
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    NS { subcommand, params } => {
+                        self.process_nickserv(conn_state, subcommand, params)
+                            .await
+                    }
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    NICKSERV { subcommand, params } => {
+                        self.process_nickserv(conn_state, subcommand, params)
+                            .await
+                    }
                 }
             },
         }
@@ -1162,5 +1217,10 @@ mod channel_cmds;
 mod conn_cmds;
 mod rest_cmds;
 mod srv_query_cmds;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+mod nickserv;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+mod chanserv;
+
 #[cfg(feature = "amqp")]
 pub mod server_communication;

@@ -17,8 +17,7 @@
 // License along with this library; if not, write to the Free Software
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
-use serde::Deserializer;
-use serde_derive::Deserialize;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashSet;
 use std::error::Error;
 use std::fmt;
@@ -26,8 +25,18 @@ use std::fs::File;
 use std::io::Read;
 use std::net::IpAddr;
 use std::str::FromStr;
-use validator::Validate;
 use clap::error::ErrorKind;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use clap::Parser;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use flagset::{flags, FlagSet};
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use serde::Serialize;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use std::net::SocketAddr;
+use validator::Validate;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use validator::ValidationError;
 
 use crate::utils::match_wildcard;
 use crate::utils::validate_channel;
@@ -92,8 +101,8 @@ pub(crate) struct UserModes {
 }
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
-pub(crate) struct DB {
-    pub database: String, // "sqlite" or "mysql"
+pub struct DatabaseConfig {
+    pub database: String,
     pub url: String,
 }
 
@@ -345,6 +354,16 @@ pub(crate) struct UserConfig {
     pub(crate) mask: Option<String>,
 }
 
+impl UserConfig {
+    pub(crate) fn check_password(&self, password: Option<&str>) -> bool {
+        match (&self.password, password) {
+            (Some(p1), Some(p2)) => p1 == p2,
+            (None, None) => true,
+            _ => false,
+        }
+    }
+}
+
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]
 pub(crate) struct ListenerConfig {
     pub(crate) listen: IpAddr,
@@ -377,7 +396,7 @@ pub(crate) struct MainConfig {
     pub(crate) log_file: Option<String>,
     #[serde(deserialize_with = "tracing_log_level_deserialize")]
     pub(crate) log_level: tracing::Level,
-    pub(crate) database: Option<DB>,
+    pub(crate) database: Option<DatabaseConfig>,
     #[validate(nested)]
     pub(crate) operators: Option<Vec<OperatorConfig>>,
     #[validate(nested)]
@@ -516,7 +535,7 @@ impl Default for MainConfig {
             admin_info: "ircadmin is IRC admin".to_string(),
             admin_info2: None,
             admin_email: None,
-            info: "This is IRC server".to_string(),
+            info: "ZeusIRCd Server".to_string(),
             listeners: vec![ListenerConfig {
                 listen: "127.0.0.1".parse().unwrap(),
                 port: 6667,

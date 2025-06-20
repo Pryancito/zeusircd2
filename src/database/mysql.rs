@@ -6,128 +6,117 @@ pub mod mysql_impl {
     use std::error::Error;
     use std::time::SystemTime;
     use async_trait::async_trait;
+    use sqlx::mysql::MySqlPoolOptions;
+    use sqlx::MySqlPool;
+    use std::time::{Duration, SystemTime};
 
-    pub struct MySqlNickDatabase {
-        pub pool: Option<Pool>,
-        db_url: String,
+    pub struct MysqlNickDatabase {
+        pool: Option<MySqlPool>,
     }
 
-    impl MySqlNickDatabase {
-        pub fn new(db_url: &str) -> Self {
-            MySqlNickDatabase {
-                pool: None,
-                db_url: db_url.to_string(),
-            }
+    impl MysqlNickDatabase {
+        pub fn new() -> Self {
+            MysqlNickDatabase { pool: None }
         }
     }
 
     #[async_trait]
-    impl NickDatabase for MySqlNickDatabase {
-        async fn connect(&mut self, _db_config: &str) -> Result<(), Box<dyn Error>> {
-            let opts = OptsBuilder::from_opts(self.db_url.as_str());
-            
-            // Use `?` to handle the Result returned by Pool::new
-            let pool = Pool::new(opts);
-            
-            // Assign the pool to `self.pool`
+    impl NickDatabase for MysqlNickDatabase {
+        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
+            let pool = MySqlPoolOptions::new()
+                .max_connections(5)
+                .connect(db_config)
+                .await?;
             self.pool = Some(pool);
-            
+            Ok(())
+        }
+
+        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
+            if let Some(pool) = self.pool.take() {
+                pool.close().await;
+            }
             Ok(())
         }
 
         async fn create_table(&mut self) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                conn.query_drop(
-                    r"CREATE TABLE IF NOT EXISTS nicks (
+                sqlx::query(
+                    "CREATE TABLE IF NOT EXISTS nicks (
                         nick VARCHAR(255) PRIMARY KEY,
                         password VARCHAR(255) NOT NULL,
                         user VARCHAR(255) NOT NULL,
-                        registration_time BIGINT UNSIGNED NOT NULL
-                    )"
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                        registration_time BIGINT NOT NULL
+                    )",
+                )
+                .execute(pool)
+                .await?;
             }
+            Ok(())
         }
 
-        async fn add_nick(&mut self, nick: &str, user: &str, registration_time: SystemTime) -> Result<(), Box<dyn Error>> {
+        async fn add_nick(
+            &mut self,
+            nick: &str,
+            password: &str,
+            user: &str,
+            registration_time: SystemTime,
+        ) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let timestamp = registration_time.duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|_| "Failed to get UNIX timestamp")?
+                let timestamp = registration_time
+                    .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
-                conn.exec_drop(
-                    r"INSERT INTO nicks (nick, user, registration_time)
-                    VALUES (?, ?, ?)",
-                    (nick, user, timestamp as u64),
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)")
+                    .bind(nick)
+                    .bind(password)
+                    .bind(user)
+                    .bind(timestamp as i64)
+                    .execute(pool)
+                    .await?;
             }
+            Ok(())
         }
 
-        async fn get_nick_info(&self, nick: &str) -> Result<Option<(String, SystemTime)>, Box<dyn Error>> {
+        async fn get_nick_info(
+            &self,
+            nick: &str,
+        ) -> Result<Option<(String, SystemTime)>, Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let result: Option<(String, u64)> = conn
-                    .exec_first(
-                        "SELECT user, registration_time FROM nicks WHERE nick = ?",
-                        (nick,),
-                    )
-                    .await
-                    .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                let row: Option<(String, i64)> =
+                    sqlx::query_as("SELECT user, registration_time FROM nicks WHERE nick = ?")
+                        .bind(nick)
+                        .fetch_optional(pool)
+                        .await?;
 
-                match result {
-                    Some((user, timestamp)) => {
-                        let registration_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp);
-                        Ok(Some((user, registration_time)))
-                    }
-                    None => Ok(None),
+                if let Some((user, timestamp)) = row {
+                    let registration_time =
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
+                    return Ok(Some((user, registration_time)));
                 }
-            } else {
-                Err("Database pool not initialized".into())
             }
+            Ok(None)
         }
 
         async fn get_nick_password(&self, nick: &str) -> Result<Option<String>, Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let result: Option<String> = conn
-                    .exec_first(
-                        "SELECT password FROM nicks WHERE nick = ?",
-                        (nick,),
-                    )
-                    .await
-                    .map_err(|e| Box::new(e) as Box<dyn Error>)?;
-
-                match result {
-                    Some(password) => {
-                        Ok(Some(password))
-                    }
-                    None => Ok(None),
-                }
-            } else {
-                Err("Database pool not initialized".into())
+                let row: Option<(String,)> =
+                    sqlx::query_as("SELECT password FROM nicks WHERE nick = ?")
+                        .bind(nick)
+                        .fetch_optional(pool)
+                        .await?;
+                return Ok(row.map(|(password,)| password));
             }
+            Ok(None)
         }
 
-        async fn update_nick_password(
-            &mut self,
-            nick: &str,
-            password: &str,
-        ) -> Result<(), Box<dyn Error>> {
+        async fn update_nick_password(&mut self, nick: &str, password: &str) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let query = format!("UPDATE nicks SET password = ? WHERE nick = ?");
-                let mut params = Vec::new();
-                params.push(Value::from(password));
-                params.push(Value::from(nick)); // Add `nick` to the params
-        
-                conn.exec_drop(query, params).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                sqlx::query("UPDATE nicks SET password = ? WHERE nick = ?")
+                    .bind(password)
+                    .bind(nick)
+                    .execute(pool)
+                    .await?;
             }
+            Ok(())
         }
 
         async fn update_nick_info(
@@ -137,136 +126,130 @@ pub mod mysql_impl {
             registration_time: Option<SystemTime>,
         ) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let mut updates = Vec::new();
-                let mut params = Vec::new();
-        
-                if let Some(u) = user {
-                    updates.push("user = ?");
-                    params.push(Value::from(u)); // Convert to `Value`
+                let mut set_clauses = Vec::new();
+                if user.is_some() {
+                    set_clauses.push("user = ?");
                 }
-                if let Some(rt) = registration_time {
-                    let timestamp = rt
-                        .duration_since(SystemTime::UNIX_EPOCH)
-                        .map_err(|_| "Failed to get UNIX timestamp")?
-                        .as_secs();
-                    updates.push("registration_time = ?");
-                    params.push(Value::from(timestamp as u64)); // Convert to `Value`
+                if registration_time.is_some() {
+                    set_clauses.push("registration_time = ?");
                 }
-        
-                if updates.is_empty() {
-                    return Ok(()); // No updates to perform
+
+                if !set_clauses.is_empty() {
+                    let query_str = format!(
+                        "UPDATE nicks SET {} WHERE nick = ?",
+                        set_clauses.join(", ")
+                    );
+                    let mut query = sqlx::query(&query_str);
+                    if let Some(u) = user {
+                        query = query.bind(u);
+                    }
+                    if let Some(rt) = registration_time {
+                        let timestamp = rt.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
+                        query = query.bind(timestamp as i64);
+                    }
+                    query.bind(nick).execute(pool).await?;
                 }
-        
-                let set_clause = updates.join(", ");
-                let query = format!("UPDATE nicks SET {} WHERE nick = ?", set_clause);
-                params.push(Value::from(nick)); // Add `nick` to the params
-        
-                conn.exec_drop(query, params).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
             }
+            Ok(())
         }
 
         async fn delete_nick(&mut self, nick: &str) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                conn.exec_drop(
-                    "DELETE FROM nicks WHERE nick = ?",
-                    (nick,),
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                sqlx::query("DELETE FROM nicks WHERE nick = ?")
+                    .bind(nick)
+                    .execute(pool)
+                    .await?;
             }
-        }
-
-        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
-            self.pool = None;
             Ok(())
         }
     }
 
-    pub struct MySqlChannelDatabase {
-        pub pool: Option<Pool>,
-        db_url: String,
+    pub struct MysqlChannelDatabase {
+        pool: Option<MySqlPool>,
     }
 
-    impl MySqlChannelDatabase {
-        pub fn new(db_url: &str) -> Self {
-            MySqlChannelDatabase {
-                pool: None,
-                db_url: db_url.to_string(),
-            }
+    impl MysqlChannelDatabase {
+        pub fn new() -> Self {
+            MysqlChannelDatabase { pool: None }
         }
     }
 
     #[async_trait]
-    impl ChannelDatabase for MySqlChannelDatabase {
-        async fn connect(&mut self, _db_config: &str) -> Result<(), Box<dyn Error>> {
-            let opts = OptsBuilder::from_opts(self.db_url.as_str());
-            
-            let pool = Pool::new(opts);
-            
-            // Assign the pool to `self.pool`
+    impl ChannelDatabase for MysqlChannelDatabase {
+        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
+            let pool = MySqlPoolOptions::new()
+                .max_connections(5)
+                .connect(db_config)
+                .await?;
             self.pool = Some(pool);
-            
+            Ok(())
+        }
+
+        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
+            if let Some(pool) = self.pool.take() {
+                pool.close().await;
+            }
             Ok(())
         }
 
         async fn create_table(&mut self) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                conn.query_drop(
-                    r"CREATE TABLE IF NOT EXISTS channels (
+                sqlx::query(
+                    "CREATE TABLE IF NOT EXISTS channels (
                         channel_name VARCHAR(255) PRIMARY KEY,
                         creator_nick VARCHAR(255) NOT NULL,
-                        creation_time BIGINT UNSIGNED NOT NULL,
+                        creation_time BIGINT NOT NULL,
                         topic TEXT,
-                        modes VARCHAR(255)
-                    )"
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                        modes TEXT
+                    )",
+                )
+                .execute(pool)
+                .await?;
             }
+            Ok(())
         }
 
-        async fn add_channel(&mut self, channel_name: &str, creator_nick: &str, creation_time: SystemTime) -> Result<(), Box<dyn Error>> {
+        async fn add_channel(
+            &mut self,
+            channel_name: &str,
+            creator_nick: &str,
+            creation_time: SystemTime,
+        ) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let timestamp = creation_time.duration_since(SystemTime::UNIX_EPOCH)
-                    .map_err(|_| "Failed to get UNIX timestamp")?
+                let timestamp = creation_time
+                    .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
-                conn.exec_drop(
-                    r"INSERT INTO channels (channel_name, creator_nick, creation_time)
-                    VALUES (?, ?, ?)",
-                    (channel_name, creator_nick, timestamp as u64),
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                sqlx::query(
+                    "INSERT INTO channels (channel_name, creator_nick, creation_time) VALUES (?, ?, ?)",
+                )
+                .bind(channel_name)
+                .bind(creator_nick)
+                .bind(timestamp as i64)
+                .execute(pool)
+                .await?;
             }
+            Ok(())
         }
 
-        async fn get_channel_info(&self, channel_name: &str) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error>> {
+        async fn get_channel_info(
+            &self,
+            channel_name: &str,
+        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let result: Option<(String, u64, Option<String>, Option<String>)> = conn
-                    .exec_first(
-                        "SELECT creator_nick, creation_time, topic, modes FROM channels WHERE channel_name = ?",
-                        (channel_name,),
-                    )
-                    .await
-                    .map_err(|e| Box::new(e) as Box<dyn Error>)?;
+                let row: Option<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
+                    "SELECT creator_nick, creation_time, topic, modes FROM channels WHERE channel_name = ?",
+                )
+                .bind(channel_name)
+                .fetch_optional(pool)
+                .await?;
 
-                match result {
-                    Some((creator_nick, timestamp, topic, modes)) => {
-                        let creation_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp);
-                        Ok(Some((creator_nick, creation_time, topic, modes)))
-                    }
-                    None => Ok(None),
+                if let Some((creator, timestamp, topic, modes)) = row {
+                    let creation_time =
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
+                    return Ok(Some((creator, creation_time, topic, modes)));
                 }
-            } else {
-                Err("Database pool not initialized".into())
             }
+            Ok(None)
         }
 
         async fn update_channel_info(
@@ -276,47 +259,39 @@ pub mod mysql_impl {
             modes: Option<&str>,
         ) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                let mut updates = Vec::new();
-                let mut params = Vec::new(); // Changed to Vec<Value>
-        
-                if let Some(t) = topic {
-                    updates.push("topic = ?");
-                    params.push(Value::from(t)); // Convert to `Value`
+                let mut set_clauses = Vec::new();
+                if topic.is_some() {
+                    set_clauses.push("topic = ?");
                 }
-                if let Some(m) = modes {
-                    updates.push("modes = ?");
-                    params.push(Value::from(m)); // Convert to `Value`
+                if modes.is_some() {
+                    set_clauses.push("modes = ?");
                 }
-        
-                if updates.is_empty() {
-                    return Ok(()); // No updates to perform
+
+                if !set_clauses.is_empty() {
+                    let query_str = format!(
+                        "UPDATE channels SET {} WHERE channel_name = ?",
+                        set_clauses.join(", ")
+                    );
+                    let mut query = sqlx::query(&query_str);
+                    if let Some(t) = topic {
+                        query = query.bind(t);
+                    }
+                    if let Some(m) = modes {
+                        query = query.bind(m);
+                    }
+                    query.bind(channel_name).execute(pool).await?;
                 }
-        
-                let set_clause = updates.join(", ");
-                let query = format!("UPDATE channels SET {} WHERE channel_name = ?", set_clause);
-                params.push(Value::from(channel_name)); // Add `channel_name` to the params
-        
-                conn.exec_drop(query, params).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
             }
+            Ok(())
         }
 
         async fn delete_channel(&mut self, channel_name: &str) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
-                let mut conn = pool.get_conn().await.map_err(|e| Box::new(e) as Box<dyn Error>)?;
-                conn.exec_drop(
-                    "DELETE FROM channels WHERE channel_name = ?",
-                    (channel_name,),
-                ).await.map_err(|e| Box::new(e) as Box<dyn Error>)
-            } else {
-                Err("Database pool not initialized".into())
+                sqlx::query("DELETE FROM channels WHERE channel_name = ?")
+                    .bind(channel_name)
+                    .execute(pool)
+                    .await?;
             }
-        }
-
-        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
-            self.pool = None;
             Ok(())
         }
     }

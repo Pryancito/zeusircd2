@@ -175,6 +175,10 @@ pub(crate) enum CommandId {
     WALLOPSId = CommandName { name: "WALLOPS" },
     ISONId = CommandName { name: "ISON" },
     _DIEId = CommandName { name: "DIE" },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NSId = CommandName { name: "NS" },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NICKSERVId = CommandName { name: "NICKSERV" },
 }
 
 use CommandId::*;
@@ -368,6 +372,16 @@ pub(crate) enum Command<'a> {
         message: Option<&'a str>,
     },
     SERVERS { target: Option<String> },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NS {
+        subcommand: &'a str,
+        params: Vec<&'a str>,
+    },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NICKSERV {
+        subcommand: &'a str,
+        params: Vec<&'a str>,
+    },
 }
 
 use Command::*;
@@ -417,6 +431,10 @@ impl<'a> Command<'a> {
             ISON { .. } => 37,
             DIE { .. } => 38,
             SERVERS { .. } => 39,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            NS { .. } => 40,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            NICKSERV { .. } => 41,
         }
     }
 
@@ -830,7 +848,30 @@ impl<'a> Command<'a> {
                     Ok(DIE { message: None })
                 }
             }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "NS" => {
+                if message.params.is_empty() {
+                    return Err(NeedMoreParams(NSId));
+                }
+                Ok(NS {
+                    subcommand: message.params[0],
+                    params: message.params[1..].to_vec(),
+                })
+            }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "NICKSERV" => {
+                if message.params.is_empty() {
+                    return Err(NeedMoreParams(NICKSERVId));
+                }
+                Ok(NICKSERV {
+                    subcommand: message.params[0],
+                    params: message.params[1..].to_vec(),
+                })
+            }
             "SERVERS" => {
+                if message.params.is_empty() {
+                    return Err(NeedMoreParams(NAMESId));
+                }
                 let target = message.params.get(0).map(|s| s.to_string());
                 Ok(Command::SERVERS { target })
             }

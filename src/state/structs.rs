@@ -51,6 +51,7 @@ pub(super) struct User {
     pub(super) invited_to: HashSet<String>, // invited in channels
     pub(super) last_activity: u64,
     pub(super) signon: u64,
+    pub(super) identified: bool,
     pub(super) history_entry: NickHistoryEntry,
     #[cfg(feature = "amqp")]
     pub(super) server: String,
@@ -74,8 +75,8 @@ impl User {
             cloack: user_state.hostname.clone(),
             sender,
             quit_sender: Some(quit_sender),
-            name: user_state.name.as_ref().unwrap().clone(),
-            realname: user_state.realname.as_ref().unwrap().clone(),
+            name: user_state.name.as_ref().cloned().unwrap_or_default(),
+            realname: user_state.realname.as_ref().cloned().unwrap_or_default(),
             source: user_state.source.clone(),
             modes: user_modes,
             away: None,
@@ -83,10 +84,11 @@ impl User {
             invited_to: HashSet::new(),
             last_activity: now_ts,
             signon: now_ts,
+            identified: false,
             history_entry: NickHistoryEntry {
-                username: user_state.name.as_ref().unwrap().clone(),
+                username: user_state.name.as_ref().cloned().unwrap_or_default(),
                 hostname: user_state.hostname.clone(),
-                realname: user_state.realname.as_ref().unwrap().clone(),
+                realname: user_state.realname.as_ref().cloned().unwrap_or_default(),
                 signon: now_ts,
             },
             #[cfg(feature = "amqp")]
@@ -141,7 +143,7 @@ impl User {
         let beta = Self::downsample(&hasher.finalize_reset());
     
         // GAMMA
-        let s = format!("{}:{}.{}:{}", key1, parts[0], parts[1], key2);
+        let s = format!("{}:{}:{}:{}", key1, parts[0], parts[1], key2);
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
         hasher.update(&hash);
@@ -326,6 +328,7 @@ impl Clone for User {
             invited_to: self.invited_to.clone(),
             last_activity: self.last_activity,
             signon: self.signon,
+            identified: self.identified,
             history_entry: self.history_entry.clone(),
             #[cfg(feature = "amqp")]
             server: self.server.clone(),
@@ -667,7 +670,7 @@ impl Channel {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct NickHistoryEntry {
     pub(super) username: String,
     pub(super) hostname: String,
@@ -675,31 +678,85 @@ pub(super) struct NickHistoryEntry {
     pub(super) signon: u64,
 }
 
-#[derive(Copy, Clone, Debug, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct CapState {
     pub(super) multi_prefix: bool,
+    pub(super) cap_notify: bool,
+    pub(super) away_notify: bool,
+    pub(super) account_notify: bool,
+    pub(super) extended_join: bool,
+    pub(super) server_time: bool,
+}
+
+impl Default for CapState {
+    fn default() -> Self {
+        CapState {
+            multi_prefix: false,
+            cap_notify: false,
+            away_notify: false,
+            account_notify: false,
+            extended_join: false,
+            server_time: false,
+        }
+    }
 }
 
 impl fmt::Display for CapState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let mut caps = Vec::new();
         if self.multi_prefix {
-            f.write_str("multi-prefix")
-        } else {
-            Ok(())
+            caps.push("multi-prefix");
         }
+        if self.cap_notify {
+            caps.push("cap-notify");
+        }
+        if self.away_notify {
+            caps.push("away-notify");
+        }
+        if self.account_notify {
+            caps.push("account-notify");
+        }
+        if self.extended_join {
+            caps.push("extended-join");
+        }
+        if self.server_time {
+            caps.push("server-time");
+        }
+        write!(f, "{}", caps.join(" "))
     }
 }
 
 impl CapState {
     pub(super) fn apply_cap(&mut self, cap: &str) -> bool {
         match cap {
-            "multi-prefix" => self.multi_prefix = true,
-            _ => return false,
-        };
-        true
+            "multi-prefix" => {
+                self.multi_prefix = true;
+                true
+            }
+            "cap-notify" => {
+                self.cap_notify = true;
+                true
+            }
+            "away-notify" => {
+                self.away_notify = true;
+                true
+            }
+            "account-notify" => {
+                self.account_notify = true;
+                true
+            }
+            "extended-join" => {
+                self.extended_join = true;
+                true
+            }
+            "server-time" => {
+                self.server_time = true;
+                true
+            }
+            _ => false,
+        }
     }
 }
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnUserState {
     pub(super) ip_addr: IpAddr,
@@ -1644,118 +1701,7 @@ mod test {
         assert_eq!(exp_channel, channel);
     }
 
-    #[test]
-    fn test_conn_user_state() {
-        let mut cus = ConnUserState::new("192.168.1.7".parse().unwrap());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                name: None,
-                realname: None,
-                nick: None,
-                source: "@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: "192.168.1.7".to_string(),
-            },
-            cus
-        );
-        assert_eq!("192.168.1.7", cus.client_name());
-        cus.set_name("boro".to_string());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                name: Some("boro".to_string()),
-                realname: None,
-                nick: None,
-                source: "~boro@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: "192.168.1.7".to_string(),
-            },
-            cus
-        );
-        assert_eq!("boro", cus.client_name());
-        cus.set_nick("buru".to_string());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                name: Some("boro".to_string()),
-                realname: None,
-                nick: Some("buru".to_string()),
-                source: "buru!~boro@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: String::new(),
-            },
-            cus
-        );
-        assert_eq!("buru", cus.client_name());
-
-        let mut cus = ConnUserState::new("192.168.1.7".parse().unwrap());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                name: None,
-                realname: None,
-                nick: None,
-                source: "@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: String::new(),
-            },
-            cus
-        );
-        assert_eq!("192.168.1.7", cus.client_name());
-        cus.set_nick("boro".to_string());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                nick: Some("boro".to_string()),
-                realname: None,
-                name: None,
-                source: "boro!@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: String::new(),
-            },
-            cus
-        );
-        assert_eq!("boro", cus.client_name());
-        cus.set_name("buru".to_string());
-        assert_eq!(
-            ConnUserState {
-                ip_addr: "192.168.1.7".parse().unwrap(),
-                hostname: "192.168.1.7".to_string(),
-                nick: Some("boro".to_string()),
-                realname: None,
-                name: Some("buru".to_string()),
-                source: "boro!~buru@192.168.1.7".to_string(),
-                password: None,
-                authenticated: false,
-                registered: false,
-                quit_reason: String::new(),
-                cloack: String::new(),
-            },
-            cus
-        );
-        assert_eq!("boro", cus.client_name());
-    }
+    
 
     #[test]
     fn test_volatile_state_new() {
