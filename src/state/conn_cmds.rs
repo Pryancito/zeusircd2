@@ -18,7 +18,7 @@
 // Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301  USA
 
 use super::*;
-use std::error::Error;
+use serde::ser::StdError;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
@@ -156,7 +156,7 @@ impl super::MainState {
         subcommand: CapCommand,
         caps: Option<Vec<&'a str>>,
         _: Option<u32>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         match subcommand {
             CapCommand::LS => {
                 conn_state.caps_negotation = true;
@@ -211,7 +211,7 @@ impl super::MainState {
     pub(super) async fn send_isupport(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         // support tokens
         let mut tokens = vec![format!("NETWORK={}", self.config.network)];
@@ -244,7 +244,7 @@ impl super::MainState {
         Ok(())
     }
 
-    async fn authenticate(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn Error>> {
+    async fn authenticate(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // registered - user that defined in configuration
         let (auth_opt, registered) = {
             // finish of authentication requires finish caps negotiation.
@@ -453,7 +453,7 @@ impl super::MainState {
     pub(super) async fn process_authenticate(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         self.feed_msg(
@@ -471,7 +471,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         pass: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !conn_state.user_state.authenticated {
             conn_state.user_state.password = Some(pass.to_string());
             // try authentication
@@ -489,7 +489,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         nick: &'a str,
         msg: &'a Message<'a>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !conn_state.user_state.authenticated {
             if !self.state.read().await.users.contains_key(nick) {
                 conn_state.user_state.set_nick(nick.to_string());
@@ -550,11 +550,19 @@ impl super::MainState {
         _: &'a str,
         _: &'a str,
         realname: &'a str,
+<<<<<<< HEAD
     ) -> Result<(), Box<dyn Error>> {
         conn_state.user_state.set_name(username.to_string());
         conn_state.user_state.realname = Some(realname.to_string());
         // Si no estamos en negociación CAP y tenemos NICK, autenticamos
         if !conn_state.caps_negotation && conn_state.user_state.nick.is_some() {
+=======
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        if !conn_state.user_state.authenticated {
+            conn_state.user_state.set_name(username.to_string());
+            conn_state.user_state.realname = Some(realname.to_string());
+            // try authentication
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             self.authenticate(conn_state).await?;
         }
         Ok(())
@@ -564,7 +572,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         token: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         self.feed_msg(
             &mut conn_state.stream,
             format!("PONG {} :{}", self.config.name, token),
@@ -577,11 +585,11 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         _: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if let Some(notifier) = conn_state.pong_notifier.take() {
             notifier
                 .send(())
-                .map_err(|_| "pong notifier error".to_string())?;
+                .map_err(|_| "Failed to send pong notification".to_string())?;
         }
         Ok(())
     }
@@ -591,7 +599,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         nick: &'a str,
         password: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let client = conn_state.user_state.client_name();
 
@@ -645,7 +653,7 @@ impl super::MainState {
     pub(super) async fn process_quit(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if let Some(nick) = &conn_state.user_state.nick {
             let user_channels = {
                 let state = self.state.read().await;

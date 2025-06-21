@@ -19,7 +19,7 @@
 
 use super::*;
 use std::collections::HashSet;
-use std::error::Error;
+use serde::ser::StdError;
 use std::iter::FromIterator;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,7 +30,7 @@ impl super::MainState {
         targets: Vec<&'a str>,
         text: &'a str,
         notice: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let user_nick = conn_state.user_state.nick.as_ref().unwrap().to_string();
 
@@ -257,7 +257,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         targets: Vec<&'a str>,
         text: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         self.process_privmsg_notice(conn_state, targets, text, false)
             .await
     }
@@ -267,7 +267,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         targets: Vec<&'a str>,
         text: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         self.process_privmsg_notice(conn_state, targets, text, true)
             .await
     }
@@ -279,7 +279,7 @@ impl super::MainState {
         user_nick: &'a str,
         user: &User,
         channel: Option<(&'a str, &ChannelUserModes)>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !user.modes.invisible || !user.channels.is_disjoint(&user.channels) {
             let client = conn_state.user_state.client_name();
             let mut flags = String::new();
@@ -319,7 +319,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         mask: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let state = self.state.read().await;
 
         if mask.contains('*') || mask.contains('?') {
@@ -362,7 +362,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         target: Option<&'a str>,
         nickmasks: Vec<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let state = self.state.read().await;
         
@@ -571,7 +571,7 @@ impl super::MainState {
         nickname: &'a str,
         count: Option<usize>,
         server: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if server.is_some() {
@@ -656,7 +656,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         nickname: &'a str,
         comment: &'a str,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
@@ -690,7 +690,7 @@ impl super::MainState {
     pub(super) async fn process_rehash(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         self.feed_msg(
             &mut conn_state.stream,
@@ -708,7 +708,7 @@ impl super::MainState {
     pub(super) async fn process_restart(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         self.feed_msg(
             &mut conn_state.stream,
@@ -727,7 +727,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         message_opt: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
@@ -757,7 +757,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         text: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
@@ -780,7 +780,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         nicknames: Vec<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let state = self.state.read().await;
 
@@ -813,7 +813,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         msg: &'a Message<'a>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let state = self.state.read().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let user = state.users.get(user_nick).unwrap();
@@ -839,7 +839,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         nicknames: Vec<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let state = self.state.read().await;
         for nicks in nicknames.chunks(20) {

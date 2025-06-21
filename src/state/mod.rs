@@ -42,6 +42,13 @@ use tokio_util::codec::LinesCodecError;
 use tracing::*;
 #[cfg(feature = "dns_lookup")]
 use trust_dns_resolver::{TokioAsyncResolver, TokioHandle};
+#[cfg(feature = "sqlite")]
+use crate::database::sqlite::{SQLiteNickDatabase, SQLiteChannelDatabase};
+#[cfg(feature = "mysql")]
+use crate::database::mysql::mysql_impl::{MysqlNickDatabase, MysqlChannelDatabase};
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use crate::database::{NickDatabase, ChannelDatabase};
+use serde::ser::StdError;
 
 use crate::command::*;
 use crate::config::*;
@@ -98,6 +105,7 @@ impl MainState {
         #[cfg(any(feature = "sqlite", feature = "mysql"))]
         let databases = if let Some(db_config) = &config.database {
             let (mut nick_db, mut chan_db): (Box<dyn NickDatabase>, Box<dyn ChannelDatabase>) =
+<<<<<<< HEAD
                 match db_config.db_type.as_str() {
                     #[cfg(feature = "sqlite")]
                     "sqlite" => (
@@ -108,14 +116,33 @@ impl MainState {
                     "mysql" => (
                         Box::new(database::mysql::MysqlNickDatabase::new()),
                         Box::new(database::mysql::MysqlChannelDatabase::new()),
+=======
+                match db_config.database.as_str() {
+                    #[cfg(feature = "sqlite")]
+                    "sqlite" => (
+                        Box::new(SQLiteNickDatabase::new(&db_config.url).expect("Failed to open nick database")),
+                        Box::new(SQLiteChannelDatabase::new(&db_config.url).expect("Failed to open channel database")),
+                    ),
+                    #[cfg(feature = "mysql")]
+                    "mysql" => (
+                        Box::new(MysqlNickDatabase::new()),
+                        Box::new(MysqlChannelDatabase::new()),
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                     ),
                     _ => return Err("Unsupported database type".to_string()),
                 };
 
+<<<<<<< HEAD
             nick_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
             nick_db.create_table().await.map_err(|e| e.to_string())?;
 
             chan_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
+=======
+            nick_db.connect(&db_config.url).await.map_err(|e| e.to_string())?;
+            nick_db.create_table().await.map_err(|e| e.to_string())?;
+
+            chan_db.connect(&db_config.url).await.map_err(|e| e.to_string())?;
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             chan_db.create_table().await.map_err(|e| e.to_string())?;
 
             Databases {
@@ -249,7 +276,7 @@ impl MainState {
         receiver.fuse()
     }
 
-    async fn process_internal(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn Error>> {
+    async fn process_internal(&self, conn_state: &mut ConnState) -> Result<(), Box<dyn StdError + Send + Sync>> {
         tokio::select! {
             Some(msg) = conn_state.receiver.recv() => {
                 conn_state.stream.feed(msg).await?;
@@ -479,6 +506,7 @@ impl MainState {
                     SERVERS{ target } => 
                         self.process_servers(conn_state, target.as_deref()).await,
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
+<<<<<<< HEAD
                     NS { subcommand, params } => {
                         self.process_nickserv(conn_state, subcommand, params)
                             .await
@@ -488,6 +516,13 @@ impl MainState {
                         self.process_nickserv(conn_state, subcommand, params)
                             .await
                     }
+=======
+                    NICKSERV{ subcommand, params } =>
+                        self.process_nickserv(conn_state, subcommand, params).await,
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    NS{ subcommand, params } =>
+                        self.process_nickserv(conn_state, subcommand, params).await,
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                 }
             },
         }
@@ -516,7 +551,7 @@ impl MainState {
         &self,
         conn_state: &mut ConnState,
         _target: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Verificar si el usuario tiene privilegios de operador
         let state = self.state.read().await;
         let user = state.users.get(conn_state.user_state.nick.as_ref().unwrap()).unwrap();
@@ -1217,10 +1252,18 @@ mod channel_cmds;
 mod conn_cmds;
 mod rest_cmds;
 mod srv_query_cmds;
+<<<<<<< HEAD
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
 mod nickserv;
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
 mod chanserv;
+=======
+
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+pub mod nickserv;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+pub mod chanserv;
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 
 #[cfg(feature = "amqp")]
 pub mod server_communication;

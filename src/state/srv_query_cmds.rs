@@ -19,7 +19,7 @@
 
 use super::*;
 use crate::help::*;
-use std::error::Error;
+use serde::ser::StdError;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -30,7 +30,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         target: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if target.is_some() {
@@ -71,7 +71,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         target: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if target.is_some() {
             let client = conn_state.user_state.client_name();
             self.feed_msg(
@@ -105,7 +105,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         target: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         if target.is_some() {
             self.feed_msg(
@@ -156,7 +156,7 @@ impl super::MainState {
     pub(super) async fn process_lusers(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let state = self.state.read().await;
         let client = conn_state.user_state.client_name();
         self.feed_msg(
@@ -227,7 +227,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         server: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if server.is_some() {
@@ -263,7 +263,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         stat: char,
         server: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if server.is_some() {
@@ -328,7 +328,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         remote_server: Option<&'a str>,
         server_mask: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         if remote_server.is_some() || server_mask.is_some() {
             self.feed_msg(
@@ -366,7 +366,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         subject_opt: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let subject = subject_opt.unwrap_or("MAIN");
         if let Some((_, content)) = HELP_TOPICS.iter().find(|(t, _)| *t == subject) {
@@ -417,7 +417,7 @@ impl super::MainState {
     pub(super) async fn process_info(
         &self,
         conn_state: &mut ConnState,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         self.feed_msg(
@@ -441,7 +441,7 @@ impl super::MainState {
         target: &'a str,
         modes: Vec<(&'a str, Vec<&'a str>)>,
         chum: &ChannelUserModes,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
@@ -1160,7 +1160,7 @@ impl super::MainState {
         state: &mut VolatileState,
         target: &'a str,
         modes: Vec<(&'a str, Vec<&'a str>)>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let user = state.users.get_mut(target).unwrap();
         let user_nick = target;
@@ -1353,7 +1353,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         target: &'a str,
         modes: Vec<(&'a str, Vec<&'a str>)>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let mut statem = self.state.write().await;

@@ -176,9 +176,15 @@ pub(crate) enum CommandId {
     ISONId = CommandName { name: "ISON" },
     _DIEId = CommandName { name: "DIE" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
+<<<<<<< HEAD
     NSId = CommandName { name: "NS" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NICKSERVId = CommandName { name: "NICKSERV" },
+=======
+    NICKSERVId = CommandName { name: "NICKSERV" },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NSId = CommandName { name: "NS" },
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 }
 
 use CommandId::*;
@@ -373,15 +379,26 @@ pub(crate) enum Command<'a> {
     },
     SERVERS { target: Option<String> },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
+<<<<<<< HEAD
     NS {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     NICKSERV {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
+<<<<<<< HEAD
+=======
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    NS {
+        subcommand: &'a str,
+        params: Vec<&'a str>,
+    },
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 }
 
 use Command::*;
@@ -432,9 +449,15 @@ impl<'a> Command<'a> {
             DIE { .. } => 38,
             SERVERS { .. } => 39,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
+<<<<<<< HEAD
             NS { .. } => 40,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NICKSERV { .. } => 41,
+=======
+            NICKSERV { .. } => 40,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            NS { .. } => 41,
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
     }
 
@@ -875,6 +898,28 @@ impl<'a> Command<'a> {
                 let target = message.params.get(0).map(|s| s.to_string());
                 Ok(Command::SERVERS { target })
             }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "NICKSERV" => {
+                if !message.params.is_empty() {
+                    Ok(NICKSERV {
+                        subcommand: message.params[0],
+                        params: message.params[1..].to_vec(),
+                    })
+                } else {
+                    Err(NeedMoreParams(NICKSERVId))
+                }
+            },
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "NS" => {
+                if !message.params.is_empty() {
+                    Ok(NS {
+                        subcommand: message.params[0],
+                        params: message.params[1..].to_vec(),
+                    })
+                } else {
+                    Err(NeedMoreParams(NSId))
+                }
+            },
             s => Err(UnknownCommand(s.to_string())),
         }
     }
@@ -1050,6 +1095,26 @@ impl<'a> Command<'a> {
             USERHOST { nicknames } => nicknames.iter().enumerate().try_for_each(|(i, n)| {
                 validate_username(n).map_err(|_| WrongParameter(USERHOSTId, i))
             }),
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            NICKSERV { subcommand, .. } => {
+                if *subcommand == "drop" {
+                    Ok(())
+                } else if *subcommand == "register" {
+                    Ok(())
+                } else {
+                    Err(UnknownSubcommand(NICKSERVId, subcommand.to_string()))
+                }
+            }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            NS { subcommand, .. } => {
+                if *subcommand == "drop" {
+                    Ok(())
+                } else if *subcommand == "register" {
+                    Ok(())
+                } else {
+                    Err(UnknownSubcommand(NSId, subcommand.to_string()))
+                }
+            }
             _ => Ok(()),
         }
     }

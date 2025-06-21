@@ -29,7 +29,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         channels: Vec<&'a str>,
         keys_opt: Option<Vec<&'a str>>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut statem = self.state.write().await;
         let state = statem.deref_mut();
         let user_nick = conn_state.user_state.nick.as_ref().unwrap().clone();
@@ -288,7 +288,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         channels: Vec<&'a str>,
         reason: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let mut statem = self.state.write().await;
         let state = statem.deref_mut();
@@ -369,7 +369,7 @@ impl super::MainState {
         channel: &'a str,
         topic_opt: Option<&'a str>,
         msg: &'a Message<'a>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if let Some(topic) = topic_opt {
@@ -493,7 +493,7 @@ impl super::MainState {
         channel: &'a Channel,
         users: &HashMap<String, User>,
         end: bool,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let conn_user_nick = conn_state.user_state.nick.as_ref().unwrap();
 
@@ -560,7 +560,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         channels: Vec<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let state = self.state.read().await;
 
         if !channels.is_empty() {
@@ -603,7 +603,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         channels: Vec<&'a str>,
         server: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
 
         if server.is_some() {
@@ -676,7 +676,7 @@ impl super::MainState {
         nickname: &'a str,
         channel: &'a str,
         msg: &'a Message<'a>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let client = conn_state.user_state.client_name();
@@ -767,7 +767,7 @@ impl super::MainState {
         channel: &'a str,
         kick_users: Vec<&'a str>,
         comment: Option<&'a str>,
-    ) -> Result<(), Box<dyn Error>> {
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let mut statem = self.state.write().await;
         let state = statem.deref_mut();
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
