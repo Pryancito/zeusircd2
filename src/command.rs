@@ -176,21 +176,9 @@ pub(crate) enum CommandId {
     ISONId = CommandName { name: "ISON" },
     _DIEId = CommandName { name: "DIE" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-<<<<<<< HEAD
-<<<<<<< HEAD
-    NSId = CommandName { name: "NS" },
-    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    NICKSERVId = CommandName { name: "NICKSERV" },
-=======
     NICKSERVId = CommandName { name: "NICKSERV" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NSId = CommandName { name: "NS" },
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-    NICKSERVId = CommandName { name: "NICKSERV" },
-    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    NSId = CommandName { name: "NS" },
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 }
 
 use CommandId::*;
@@ -385,35 +373,20 @@ pub(crate) enum Command<'a> {
     },
     SERVERS { target: Option<String> },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-<<<<<<< HEAD
-<<<<<<< HEAD
     NS {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     NICKSERV {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NS {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 }
 
 use Command::*;
@@ -464,21 +437,9 @@ impl<'a> Command<'a> {
             DIE { .. } => 38,
             SERVERS { .. } => 39,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
-<<<<<<< HEAD
-<<<<<<< HEAD
-            NS { .. } => 40,
-            #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            NICKSERV { .. } => 41,
-=======
             NICKSERV { .. } => 40,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NS { .. } => 41,
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-            NICKSERV { .. } => 40,
-            #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            NS { .. } => 41,
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
     }
 
