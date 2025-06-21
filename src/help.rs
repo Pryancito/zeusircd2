@@ -23,7 +23,7 @@ pub(crate) static HELP_TOPICS: [(&str, &str); 2] = [
         "COMMANDS",
         r##"List of commands:
 ADMIN
-AUTHENTICATE - unsupported
+AUTHENTICATE - SASL authentication mechanism
 AWAY
 CAP
 CONNECT - unsupported

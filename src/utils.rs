@@ -38,6 +38,8 @@ use validator::ValidationError;
 use tokio_tungstenite::WebSocketStream;
 use tungstenite::Message;
 use tokio_util::codec::Framed;
+use md5::{Md5, Digest};
+use base64::{Engine as _, engine::general_purpose};
 
 use crate::command::CommandError;
 use crate::command::CommandError::*;
@@ -712,6 +714,124 @@ pub(crate) fn validate_password_hash(hash_str: &str) -> Result<(), ValidationErr
         }
         Err(_) => Err(ValidationError::new("Wrong base64 password hash")),
     }
+}
+
+/// Verifica la autenticación SASL PLAIN
+pub(crate) async fn verify_sasl_plain(
+    data: &str,
+    config: &crate::config::MainConfig,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    // Decodificar datos base64
+    let decoded = match general_purpose::STANDARD.decode(data) {
+        Ok(d) => d,
+        Err(_) => return Ok(None),
+    };
+    
+    // Convertir a string
+    let auth_string = match String::from_utf8(decoded) {
+        Ok(s) => s,
+        Err(_) => return Ok(None),
+    };
+    
+    // Parsear el formato: authorization_id\0authentication_id\0password
+    let parts: Vec<&str> = auth_string.split('\0').collect();
+    if parts.len() != 3 {
+        return Ok(None);
+    }
+    
+    let _authz_id = parts[0]; // authorization_id (ignorado por ahora)
+    let authn_id = parts[1];  // authentication_id (username)
+    let password = parts[2];  // password
+    
+    // Verificar contra la configuración de usuarios
+    if let Some(ref users) = config.users {
+        for user in users {
+            if user.name == authn_id {
+                if let Some(ref user_password) = user.password {
+                    // Verificar contraseña con Argon2
+                    if argon2_verify_password_async(password.to_string(), user_password.clone())
+                        .await
+                        .is_ok()
+                    {
+                        return Ok(Some(authn_id.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Verificar contra contraseña por defecto
+    if let Some(ref default_password) = config.password {
+        if argon2_verify_password_async(password.to_string(), default_password.clone())
+            .await
+            .is_ok()
+        {
+            return Ok(Some(authn_id.to_string()));
+        }
+    }
+    
+    Ok(None)
+}
+
+/// Verifica la autenticación SASL MD5
+pub(crate) async fn verify_sasl_md5(
+    data: &str,
+    config: &crate::config::MainConfig,
+) -> Result<Option<String>, Box<dyn std::error::Error + Send + Sync>> {
+    // Decodificar datos base64
+    let decoded = match general_purpose::STANDARD.decode(data) {
+        Ok(d) => d,
+        Err(_) => return Ok(None),
+    };
+    
+    // Convertir a string
+    let auth_string = match String::from_utf8(decoded) {
+        Ok(s) => s,
+        Err(_) => return Ok(None),
+    };
+    
+    // Parsear el formato: username\0password
+    let parts: Vec<&str> = auth_string.split('\0').collect();
+    if parts.len() != 2 {
+        return Ok(None);
+    }
+    
+    let username = parts[0];
+    let password = parts[1];
+    
+    // Verificar contra la configuración de usuarios
+    if let Some(ref users) = config.users {
+        for user in users {
+            if user.name == username {
+                if let Some(ref user_password) = user.password {
+                    // Para MD5, asumimos que el hash almacenado es MD5
+                    // Calcular hash MD5 de la contraseña proporcionada
+                    let mut hasher = Md5::new();
+                    hasher.update(password.as_bytes());
+                    let password_hash = format!("{:x}", hasher.finalize());
+                    
+                    // Comparar con el hash almacenado
+                    if password_hash == *user_password {
+                        return Ok(Some(username.to_string()));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Verificar contra contraseña por defecto
+    if let Some(ref default_password) = config.password {
+        // Calcular hash MD5 de la contraseña proporcionada
+        let mut hasher = Md5::new();
+        hasher.update(password.as_bytes());
+        let password_hash = format!("{:x}", hasher.finalize());
+        
+        if password_hash == *default_password {
+            return Ok(Some(username.to_string()));
+        }
+    }
+    
+    Ok(None)
 }
 
 #[cfg(test)]

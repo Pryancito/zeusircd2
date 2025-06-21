@@ -2,7 +2,7 @@
 name = "zeusircd2"
 authors = ["Moebius ( Pryan )"]
 license = "LGPL-2.1-or-later"
-version = "0.0.3"
+version = "0.0.4"
 edition = "2024"
 rust-version = "1.85.0"
 description = "Next generation ircd"
@@ -45,6 +45,8 @@ serde_json = "1.0.140"
 anyhow = "1.0.98"
 sha2 = "0.10"
 rand = "0.8.5"
+md-5 = "0.10"
+base64 = "0.21"
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.5.0"
 rand = "0.9.1"

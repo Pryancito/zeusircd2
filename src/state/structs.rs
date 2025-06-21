@@ -678,7 +678,7 @@ pub(super) struct NickHistoryEntry {
     pub(super) signon: u64,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CapState {
     pub(super) multi_prefix: bool,
     pub(super) cap_notify: bool,
@@ -686,6 +686,7 @@ pub(crate) struct CapState {
     pub(super) account_notify: bool,
     pub(super) extended_join: bool,
     pub(super) server_time: bool,
+    pub(super) sasl: bool,
 }
 
 impl Default for CapState {
@@ -697,6 +698,7 @@ impl Default for CapState {
             account_notify: false,
             extended_join: false,
             server_time: false,
+            sasl: false,
         }
     }
 }
@@ -721,6 +723,9 @@ impl fmt::Display for CapState {
         }
         if self.server_time {
             caps.push("server-time");
+        }
+        if self.sasl {
+            caps.push("sasl");
         }
         write!(f, "{}", caps.join(" "))
     }
@@ -753,10 +758,15 @@ impl CapState {
                 self.server_time = true;
                 true
             }
+            "sasl" => {
+                self.sasl = true;
+                true
+            }
             _ => false,
         }
     }
 }
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ConnUserState {
     pub(super) ip_addr: IpAddr,
@@ -770,6 +780,10 @@ pub(crate) struct ConnUserState {
     pub(super) registered: bool,
     pub(super) quit_reason: String,
     pub(super) cloack: String,
+    // SASL fields
+    pub(super) sasl_authenticated: bool,
+    pub(super) sasl_mechanism: Option<String>,
+    pub(super) sasl_data: Option<String>,
 }
 
 impl ConnUserState {
@@ -788,6 +802,9 @@ impl ConnUserState {
             registered: false,
             quit_reason: String::new(),
             cloack: ip_addr.to_string(),
+            sasl_authenticated: false,
+            sasl_mechanism: None,
+            sasl_data: None,
         }
     }
 
@@ -1142,6 +1159,9 @@ mod test {
             registered: true,
             quit_reason: String::new(),
             cloack: String::new(),
+            sasl_authenticated: false,
+            sasl_mechanism: None,
+            sasl_data: None,
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();
@@ -1788,6 +1808,9 @@ mod test {
             registered: true,
             quit_reason: String::new(),
             cloack: String::new(),
+            sasl_authenticated: false,
+            sasl_mechanism: None,
+            sasl_data: None,
         };
         let (sender, _) = unbounded_channel();
         let (quit_sender, _) = oneshot::channel();

@@ -249,7 +249,9 @@ pub(crate) enum Command<'a> {
         caps: Option<Vec<&'a str>>,
         version: Option<u32>,
     },
-    AUTHENTICATE {},
+    AUTHENTICATE {
+        data: Option<&'a str>,
+    },
     PASS {
         password: &'a str,
     },
@@ -373,20 +375,18 @@ pub(crate) enum Command<'a> {
     },
     SERVERS { target: Option<String> },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    NS {
+    NICKSERV {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    NICKSERV {
+    NS {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
 }
 
 use Command::*;
-
-pub(crate) const NUM_COMMANDS: usize = 42;
 
 impl<'a> Command<'a> {
     pub(crate) fn index(&self) -> usize {
@@ -486,7 +486,14 @@ impl<'a> Command<'a> {
                     Err(NeedMoreParams(CAPId))
                 }
             }
-            "AUTHENTICATE" => Ok(AUTHENTICATE {}),
+            "AUTHENTICATE" => {
+                let data = if !message.params.is_empty() {
+                    Some(message.params[0])
+                } else {
+                    None
+                };
+                Ok(AUTHENTICATE { data })
+            },
             "PASS" => {
                 if !message.params.is_empty() {
                     Ok(PASS {
@@ -1276,7 +1283,7 @@ mod test {
         );
 
         assert_eq!(
-            Ok(AUTHENTICATE {}),
+            Ok(AUTHENTICATE { data: None }),
             Command::from_message(&Message {
                 source: None,
                 command: "AUTHENTICATE",

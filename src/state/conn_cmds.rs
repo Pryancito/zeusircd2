@@ -157,7 +157,7 @@ impl super::MainState {
         match subcommand {
             CapCommand::LS => {
                 conn_state.caps_negotation = true;
-                self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix")
+                self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix sasl")
                     .await
             }
             CapCommand::LIST => {
@@ -247,65 +247,73 @@ impl super::MainState {
             // finish of authentication requires finish caps negotiation.
             if !conn_state.caps_negotation {
                 let user_state = &mut conn_state.user_state;
-                // nick must be defined
-                if user_state.nick.is_some() {
-                    // username must be defined
-                    if let Some(ref name) = user_state.name {
-                        let mut registered = false;
-                        // get password option
-                        let password_opt = if let Some(uidx) = self.user_config_idxs.get(name) {
-                            // match user mask
-                            if let Some(ref users) = self.config.users {
-                                if let Some(ref mask) = users[*uidx].mask {
-                                    if match_wildcard(mask, &user_state.source) {
+                
+                // Si ya está autenticado con SASL, considerar como autenticado
+                if user_state.sasl_authenticated {
+                    user_state.authenticated = true;
+                    user_state.registered = true;
+                    (Some(true), true)
+                } else {
+                    // nick must be defined
+                    if user_state.nick.is_some() {
+                        // username must be defined
+                        if let Some(ref name) = user_state.name {
+                            let mut registered = false;
+                            // get password option
+                            let password_opt = if let Some(uidx) = self.user_config_idxs.get(name) {
+                                // match user mask
+                                if let Some(ref users) = self.config.users {
+                                    if let Some(ref mask) = users[*uidx].mask {
+                                        if match_wildcard(mask, &user_state.source) {
+                                            registered = true;
+                                            users[*uidx].password.as_ref()
+                                        } else {
+                                            info!(
+                                                "Auth failed for {}: user mask doesn't match",
+                                                conn_state.user_state.source
+                                            );
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                "ERROR: user mask doesn't match",
+                                            )
+                                            .await?;
+                                            return Ok(());
+                                        }
+                                    } else {
                                         registered = true;
                                         users[*uidx].password.as_ref()
-                                    } else {
-                                        info!(
-                                            "Auth failed for {}: user mask doesn't match",
-                                            conn_state.user_state.source
-                                        );
-                                        self.feed_msg(
-                                            &mut conn_state.stream,
-                                            "ERROR: user mask doesn't match",
-                                        )
-                                        .await?;
-                                        return Ok(());
                                     }
                                 } else {
-                                    registered = true;
-                                    users[*uidx].password.as_ref()
+                                    None
                                 }
                             } else {
                                 None
                             }
-                        } else {
-                            None
-                        }
-                        // otherwise get default password from configuration
-                        .or(self.config.password.as_ref());
+                            // otherwise get default password from configuration
+                            .or(self.config.password.as_ref());
 
-                        if let Some(password) = password_opt {
-                            // check password
-                            let good = if let Some(ref entered_pwd) = user_state.password {
-                                argon2_verify_password_async(entered_pwd.clone(), password.clone())
-                                    .await
-                                    .is_ok()
+                            if let Some(password) = password_opt {
+                                // check password
+                                let good = if let Some(ref entered_pwd) = user_state.password {
+                                    argon2_verify_password_async(entered_pwd.clone(), password.clone())
+                                        .await
+                                        .is_ok()
+                                } else {
+                                    true
+                                };
+
+                                user_state.authenticated = good;
+                                (Some(good), registered)
                             } else {
-                                true
-                            };
-
-                            user_state.authenticated = good;
-                            (Some(good), registered)
+                                user_state.authenticated = true;
+                                (Some(true), registered)
+                            }
                         } else {
-                            user_state.authenticated = true;
-                            (Some(true), registered)
+                            (None, false)
                         }
                     } else {
                         (None, false)
                     }
-                } else {
-                    (None, false)
                 }
             } else {
                 (None, false)
@@ -433,17 +441,141 @@ impl super::MainState {
     pub(super) async fn process_authenticate(
         &self,
         conn_state: &mut ConnState,
+        data: Option<&str>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let client = conn_state.user_state.client_name();
+        // Verificar si ya está autenticado con SASL
+        if conn_state.user_state.sasl_authenticated {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                ErrSaslAlready907 { client },
+            )
+            .await?;
+            return Ok(());
+        }
 
-        self.feed_msg(
-            &mut conn_state.stream,
-            ErrUnknownCommand421 {
-                client,
-                command: "AUTHENTICATE",
-            },
-        )
-        .await?;
+        // Si no hay datos, enviar mecanismos disponibles
+        if data.is_none() {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                RplSaslMechs908 {
+                    client,
+                    mechanisms: "PLAIN MD5",
+                },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        let data = data.unwrap();
+
+        // Verificar longitud del mensaje
+        if data.len() > 400 {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                ErrSaslTooLong905 { client },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        // Si es "*", abortar autenticación
+        if data == "*" {
+            conn_state.user_state.sasl_mechanism = None;
+            conn_state.user_state.sasl_data = None;
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(
+                &mut conn_state.stream,
+                ErrSaslAborted906 { client },
+            )
+            .await?;
+            return Ok(());
+        }
+
+        // Si no hay mecanismo seleccionado, el primer mensaje debe ser el mecanismo
+        if conn_state.user_state.sasl_mechanism.is_none() {
+            let mechanism = data.to_uppercase();
+            match mechanism.as_str() {
+                "PLAIN" | "MD5" => {
+                    conn_state.user_state.sasl_mechanism = Some(mechanism);
+                    // Enviar "+" para solicitar datos de autenticación
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        "AUTHENTICATE +",
+                    )
+                    .await?;
+                }
+                _ => {
+                    let client = conn_state.user_state.client_name();
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        ErrSaslFail904 { client },
+                    )
+                    .await?;
+                }
+            }
+            return Ok(());
+        }
+
+        // Procesar datos de autenticación
+        let mechanism = conn_state.user_state.sasl_mechanism.as_ref().unwrap();
+        let auth_result = match mechanism.as_str() {
+            "PLAIN" => {
+                crate::utils::verify_sasl_plain(data, &self.config).await
+            }
+            "MD5" => {
+                crate::utils::verify_sasl_md5(data, &self.config).await
+            }
+            _ => {
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrSaslFail904 { client },
+                )
+                .await?;
+                return Ok(());
+            }
+        };
+
+        match auth_result {
+            Ok(Some(username)) => {
+                // Autenticación exitosa
+                conn_state.user_state.sasl_authenticated = true;
+                conn_state.user_state.name = Some(username);
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    RplSaslSuccess903 { client },
+                )
+                .await?;
+                
+                // Intentar autenticación completa si tenemos nick
+                if conn_state.user_state.nick.is_some() {
+                    self.authenticate(conn_state).await?;
+                }
+            }
+            Ok(None) => {
+                // Autenticación fallida
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrSaslFail904 { client },
+                )
+                .await?;
+            }
+            Err(_) => {
+                // Error interno
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    ErrSaslFail904 { client },
+                )
+                .await?;
+            }
+        }
+
         Ok(())
     }
 

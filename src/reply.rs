@@ -493,16 +493,12 @@ pub(crate) enum Reply<'a> {
         subject: &'a str,
         line: &'a str,
     },
-    //RplLoggedIn900{ client: &'a str, nick: &'a str, user: &'a str, host: &'a str,
-    //        account: &'a str, username: &'a str },
-    //RplLoggedOut901{ client: &'a str, nick: &'a str, user: &'a str, host: &'a str },
-    //ErrNickLocked902{ client: &'a str },
-    //RplSaslSuccess903{ client: &'a str },
-    //ErrSaslFail904{ client: &'a str },
-    //ErrSaslTooLong905{ client: &'a str },
-    //ErrSaslAborted906{ client: &'a str },
-    //ErrSaslAlready907{ client: &'a str },
-    //RplSaslMechs908{ client: &'a str, mechanisms: &'a str },
+    RplSaslSuccess903{ client: &'a str },
+    ErrSaslFail904{ client: &'a str },
+    ErrSaslTooLong905{ client: &'a str },
+    ErrSaslAborted906{ client: &'a str },
+    ErrSaslAlready907{ client: &'a str },
+    RplSaslMechs908{ client: &'a str, mechanisms: &'a str },
     ErrCannotDoCommand972 {
         client: &'a str,
     },
@@ -1169,26 +1165,24 @@ impl<'a> fmt::Display for Reply<'a> {
             } => {
                 write!(f, "706 {} {} :{}", client, subject, line)
             }
-            //RplLoggedIn900{ client, nick, user, host, account, username } => {
-            //    write!(f, "900 {} {}!~{}@{} {} :You are now logged in as {}", client, nick,
-            //        user, host, account, username) }
-            //RplLoggedOut901{ client, nick, user, host } => {
-            //    write!(f, "901 {} {}!~{}@{} :You are now logged out", client, nick,
-            //        user, host) }
-            //ErrNickLocked902{ client } => {
-            //    write!(f, "902 {} :You must use a nick assigned to you", client) }
-            //RplSaslSuccess903{ client } => {
-            //    write!(f, "903 {} :SASL authentication successful", client) }
-            //ErrSaslFail904{ client } => {
-            //    write!(f, "904 {} :SASL authentication failed", client) }
-            //ErrSaslTooLong905{ client } => {
-            //    write!(f, "905 {} :SASL message too long", client) }
-            //ErrSaslAborted906{ client } => {
-            //    write!(f, "906 {} :SASL authentication aborted", client) }
-            //ErrSaslAlready907{ client } => {
-            //    write!(f, "907 {} :You have already authenticated using SASL", client) }
-            //RplSaslMechs908{ client, mechanisms } => {
-            //    write!(f, "908 {} {} :are available SASL mechanisms", client, mechanisms) }
+            RplSaslSuccess903{ client } => {
+                write!(f, "903 {} :SASL authentication successful", client)
+            }
+            ErrSaslFail904{ client } => {
+                write!(f, "904 {} :SASL authentication failed", client)
+            }
+            ErrSaslTooLong905{ client } => {
+                write!(f, "905 {} :SASL message too long", client)
+            }
+            ErrSaslAborted906{ client } => {
+                write!(f, "906 {} :SASL authentication aborted", client)
+            }
+            ErrSaslAlready907{ client } => {
+                write!(f, "907 {} :You have already authenticated using SASL", client)
+            }
+            RplSaslMechs908{ client, mechanisms } => {
+                write!(f, "908 {} {} :are available SASL mechanisms", client, mechanisms)
+            }
             ErrCannotDoCommand972 { client } => {
                 write!(f, "972 {} :Can not do command", client)
             }
@@ -2197,6 +2191,8 @@ mod test {
                 }
             )
         );
+        //ErrStartTls691{ client } => {
+        //    write!(f, "691 {} :STARTTLS failed (Wrong moon phase)", client) }
         assert_eq!(
             "696 <client> <target chan/user> x <parameter> :<description>",
             format!(
@@ -2253,19 +2249,31 @@ mod test {
         //        user: "<user>", host: "<host>" }));
         //assert_eq!("902 <client> :You must use a nick assigned to you",
         //    format!("{}", ErrNickLocked902{ client: "<client>" }));
-        //assert_eq!("903 <client> :SASL authentication successful",
-        //    format!("{}", RplSaslSuccess903{ client: "<client>" }));
-        //assert_eq!("904 <client> :SASL authentication failed",
-        //    format!("{}", ErrSaslFail904{ client: "<client>" }));
-        //assert_eq!("905 <client> :SASL message too long",
-        //    format!("{}", ErrSaslTooLong905{ client: "<client>" }));
-        //assert_eq!("906 <client> :SASL authentication aborted",
-        //    format!("{}", ErrSaslAborted906{ client: "<client>" }));
-        //assert_eq!("907 <client> :You have already authenticated using SASL",
-        //    format!("{}", ErrSaslAlready907{ client: "<client>" }));
-        //assert_eq!("908 <client> <mechanisms> :are available SASL mechanisms",
-        //    format!("{}", RplSaslMechs908{ client: "<client>",
-        //        mechanisms: "<mechanisms>" }));
+        assert_eq!(
+            "903 <client> :SASL authentication successful",
+            format!("{}", RplSaslSuccess903{ client: "<client>" })
+        );
+        assert_eq!(
+            "904 <client> :SASL authentication failed",
+            format!("{}", ErrSaslFail904{ client: "<client>" })
+        );
+        assert_eq!(
+            "905 <client> :SASL message too long",
+            format!("{}", ErrSaslTooLong905{ client: "<client>" })
+        );
+        assert_eq!(
+            "906 <client> :SASL authentication aborted",
+            format!("{}", ErrSaslAborted906{ client: "<client>" })
+        );
+        assert_eq!(
+            "907 <client> :You have already authenticated using SASL",
+            format!("{}", ErrSaslAlready907{ client: "<client>" })
+        );
+        assert_eq!(
+            "908 <client> <mechanisms> :are available SASL mechanisms",
+            format!("{}", RplSaslMechs908{ client: "<client>",
+                mechanisms: "<mechanisms>" })
+        );
         assert_eq!(
             "972 <client> :Can not do command",
             format!("{}", ErrCannotDoCommand972 { client: "<client>" })

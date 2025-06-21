@@ -82,7 +82,7 @@ pub(crate) struct MainState {
     serv_comm: RwLock<ServerCommunication>,
     created: String,
     created_time: DateTime<Local>,
-    command_counts: [AtomicU64; NUM_COMMANDS],
+    command_counts: [AtomicU64; 42],
 }
 
 impl MainState {
@@ -160,48 +160,15 @@ impl MainState {
             created: now.to_rfc2822(),
             created_time: now,
             command_counts: [
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
-                AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0)
             ],
         };
         Ok(state)
@@ -398,7 +365,7 @@ impl MainState {
                 use crate::Command::*;
                 // if user not authenticated
                 match cmd {
-                    CAP{ .. } | AUTHENTICATE{ } | PASS{ .. } | NICK{ .. } |
+                    CAP{ .. } | AUTHENTICATE{ .. } | PASS{ .. } | NICK{ .. } |
                             USER{ .. } | QUIT{ } => {},
                     _ => {
                         // expect CAP, AUTHENTICATE, PASS, NICK, USER, QUIT -
@@ -414,8 +381,8 @@ impl MainState {
                 match cmd {
                     CAP{ subcommand, caps, version } =>
                         self.process_cap(conn_state, subcommand, caps, version).await,
-                    AUTHENTICATE{ } =>
-                        self.process_authenticate(conn_state).await,
+                    AUTHENTICATE{ data } =>
+                        self.process_authenticate(conn_state, data).await,
                     PASS{ password } =>
                         self.process_pass(conn_state, password).await,
                     NICK{ nickname } =>
