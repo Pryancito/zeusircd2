@@ -38,6 +38,7 @@ use config::*;
 use state::*;
 use utils::*;
 
+<<<<<<< HEAD
 #[cfg(feature = "sqlite")]
 use crate::database::sqlite::{SQLiteChannelDatabase, SQLiteNickDatabase};
 #[cfg(feature = "mysql")]
@@ -97,6 +98,8 @@ impl DBState {
     }
 }
 
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 fn main() -> Result<(), Box<dyn Error>> {
     let cli = Cli::parse();
     
@@ -132,8 +135,6 @@ async fn tokio_main(cli: Cli) -> Result<(), Box<dyn Error>> {
         println!("Password Hash: {}", argon2_hash_password(&password));
     } else {
         let config = MainConfig::new(cli)?;
-        #[cfg(any(feature = "mysql", feature = "sqlite"))]
-        let _ = DBState::new(&config).await;
         initialize_logging(&config);
         let (_, handles) = run_server(config).await?;
         // and await for end

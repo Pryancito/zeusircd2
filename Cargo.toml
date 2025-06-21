@@ -34,6 +34,7 @@ trust-dns-resolver = { version = "0.21", optional = true }
 sqlite = { version = "0.37.0", optional = true }
 async-trait = "0.1.88"
 mysql_async = { version = "0.36.1", optional = true }
+sqlx = { version = "0.8.6", optional = true, default-features = false, features = ["mysql", "runtime-tokio-rustls"] }
 tokio-tungstenite = "0.26.2"
 tungstenite = "0.26.2"
 url = "2.5.4"
@@ -46,13 +47,14 @@ sha2 = "0.10"
 rand = "0.8.5"
 [target.'cfg(unix)'.dependencies]
 daemonize = "0.5.0"
+rand = "0.9.1"
 
 [features]
 default = []
 tls = [ "openssl", "tokio-openssl" ]
 dns_lookup = [ "trust-dns-resolver" ]
-sqlite3 = ["sqlite"]
-mysql = ["mysql_async"]
+sqlite = ["dep:sqlite"]
+mysql = ["mysql_async", "sqlx"]
 amqp = ["lapin", "amq-protocol", "amq-protocol-types"]
 
 [dependencies.tracing-subscriber]
