@@ -7,7 +7,10 @@ pub mod mysql_impl {
     use sqlx::mysql::MySqlPoolOptions;
     use sqlx::MySqlPool;
 <<<<<<< HEAD
+<<<<<<< HEAD
     use std::time::{Duration, SystemTime};
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 
@@ -24,7 +27,11 @@ pub mod mysql_impl {
     #[async_trait]
     impl NickDatabase for MysqlNickDatabase {
 <<<<<<< HEAD
+<<<<<<< HEAD
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
+=======
+        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
@@ -33,6 +40,7 @@ pub mod mysql_impl {
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
+<<<<<<< HEAD
 <<<<<<< HEAD
             Ok(())
         }
@@ -46,6 +54,11 @@ pub mod mysql_impl {
             Ok(())
         }
 
+=======
+            Ok(())
+        }
+
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = self.pool.take() {
                 pool.close().await;
@@ -75,6 +88,7 @@ pub mod mysql_impl {
             password: &str,
             user: &str,
             registration_time: SystemTime,
+<<<<<<< HEAD
 <<<<<<< HEAD
         ) -> Result<(), Box<dyn Error>> {
             if let Some(pool) = &self.pool {
@@ -132,6 +146,10 @@ pub mod mysql_impl {
 =======
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
+=======
+        ) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                 let timestamp = registration_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
@@ -140,13 +158,19 @@ pub mod mysql_impl {
                     .bind(password)
                     .bind(user)
                     .bind(timestamp as i64)
+<<<<<<< HEAD
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
+=======
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                     .execute(pool)
                     .await?;
             }
             Ok(())
 <<<<<<< HEAD
+<<<<<<< HEAD
 =======
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
 
         async fn get_nick_info(
@@ -190,6 +214,9 @@ pub mod mysql_impl {
                     .await?;
             }
             Ok(())
+<<<<<<< HEAD
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
+=======
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
 
@@ -251,7 +278,11 @@ pub mod mysql_impl {
     #[async_trait]
     impl ChannelDatabase for MysqlChannelDatabase {
 <<<<<<< HEAD
+<<<<<<< HEAD
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
+=======
+        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
@@ -260,6 +291,7 @@ pub mod mysql_impl {
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
+<<<<<<< HEAD
 <<<<<<< HEAD
             Ok(())
         }
@@ -273,6 +305,11 @@ pub mod mysql_impl {
             Ok(())
         }
 
+=======
+            Ok(())
+        }
+
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = self.pool.take() {
                 pool.close().await;
@@ -303,7 +340,11 @@ pub mod mysql_impl {
             creator_nick: &str,
             creation_time: SystemTime,
 <<<<<<< HEAD
+<<<<<<< HEAD
         ) -> Result<(), Box<dyn Error>> {
+=======
+        ) -> Result<(), Box<dyn Error + Send + Sync>> {
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
@@ -327,7 +368,11 @@ pub mod mysql_impl {
             &self,
             channel_name: &str,
 <<<<<<< HEAD
+<<<<<<< HEAD
         ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error>> {
+=======
+        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
         ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)

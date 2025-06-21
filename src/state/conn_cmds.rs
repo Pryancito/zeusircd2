@@ -551,12 +551,15 @@ impl super::MainState {
         _: &'a str,
         realname: &'a str,
 <<<<<<< HEAD
+<<<<<<< HEAD
     ) -> Result<(), Box<dyn Error>> {
         conn_state.user_state.set_name(username.to_string());
         conn_state.user_state.realname = Some(realname.to_string());
         // Si no estamos en negociación CAP y tenemos NICK, autenticamos
         if !conn_state.caps_negotation && conn_state.user_state.nick.is_some() {
 =======
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !conn_state.user_state.authenticated {
             conn_state.user_state.set_name(username.to_string());

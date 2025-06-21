@@ -39,6 +39,7 @@ use state::*;
 use utils::*;
 
 <<<<<<< HEAD
+<<<<<<< HEAD
 #[cfg(feature = "sqlite")]
 use crate::database::sqlite::{SQLiteChannelDatabase, SQLiteNickDatabase};
 #[cfg(feature = "mysql")]
@@ -98,6 +99,8 @@ impl DBState {
     }
 }
 
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 =======
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 fn main() -> Result<(), Box<dyn Error>> {

@@ -8,6 +8,7 @@ use std::time::SystemTime;
 #[async_trait::async_trait]
 pub trait NickDatabase: Send + Sync {
 <<<<<<< HEAD
+<<<<<<< HEAD
     async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>>;
     async fn close(&mut self) -> Result<(), Box<dyn Error>>;
     async fn create_table(&mut self) -> Result<(), Box<dyn Error>>;
@@ -18,6 +19,8 @@ pub trait NickDatabase: Send + Sync {
     async fn update_nick_info(&mut self, nick: &str, user: Option<&str>, registration_time: Option<SystemTime>) -> Result<(), Box<dyn Error>>;
     async fn delete_nick(&mut self, nick: &str) -> Result<(), Box<dyn Error>>;
 =======
+=======
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn create_table(&mut self) -> Result<(), Box<dyn Error + Send + Sync>>;
@@ -27,6 +30,9 @@ pub trait NickDatabase: Send + Sync {
     async fn update_nick_password(&mut self, nick: &str, password: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn update_nick_info(&mut self, nick: &str, user: Option<&str>, registration_time: Option<SystemTime>) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn delete_nick(&mut self, nick: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
+<<<<<<< HEAD
+>>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
+=======
 >>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 }
 
