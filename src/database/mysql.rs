@@ -42,7 +42,13 @@ pub mod mysql_impl {
                         nick VARCHAR(255) PRIMARY KEY,
                         password VARCHAR(255) NOT NULL,
                         user VARCHAR(255) NOT NULL,
-                        registration_time BIGINT NOT NULL
+                        registration_time BIGINT NOT NULL,
+                        email VARCHAR(255),
+                        url VARCHAR(255),
+                        vhost VARCHAR(255),
+                        noaccess BOOLEAN NOT NULL DEFAULT FALSE,
+                        noop BOOLEAN NOT NULL DEFAULT FALSE,
+                        showmail BOOLEAN NOT NULL DEFAULT FALSE
                     )",
                 )
                 .execute(pool)
@@ -57,16 +63,28 @@ pub mod mysql_impl {
             password: &str,
             user: &str,
             registration_time: SystemTime,
+            email: Option<&str>,
+            url: Option<&str>,
+            vhost: Option<&str>,
+            noaccess: bool,
+            noop: bool,
+            showmail: bool,
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 let timestamp = registration_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
-                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)")
+                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                     .bind(nick)
                     .bind(password)
                     .bind(user)
                     .bind(timestamp as i64)
+                    .bind(email)
+                    .bind(url)
+                    .bind(vhost)
+                    .bind(noaccess)
+                    .bind(noop)
+                    .bind(showmail)
                     .execute(pool)
                     .await?;
             }
@@ -76,18 +94,18 @@ pub mod mysql_impl {
         async fn get_nick_info(
             &self,
             nick: &str,
-        ) -> Result<Option<(String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
-                let row: Option<(String, i64)> =
-                    sqlx::query_as("SELECT user, registration_time FROM nicks WHERE nick = ?")
+                let row: Option<(String, i64, Option<String>, Option<String>, Option<String>, bool, bool, bool)> =
+                    sqlx::query_as("SELECT user, registration_time, email, url, vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?")
                         .bind(nick)
                         .fetch_optional(pool)
                         .await?;
 
-                if let Some((user, timestamp)) = row {
+                if let Some((user, timestamp, email, url, vhost, noaccess, noop, showmail)) = row {
                     let registration_time =
                         SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
-                    return Ok(Some((user, registration_time)));
+                    return Ok(Some((user, registration_time, email, url, vhost, noaccess, noop, showmail)));
                 }
             }
             Ok(None)
@@ -121,6 +139,12 @@ pub mod mysql_impl {
             nick: &str,
             user: Option<&str>,
             registration_time: Option<SystemTime>,
+            email: Option<&str>,
+            url: Option<&str>,
+            vhost: Option<&str>,
+            noaccess: Option<bool>,
+            noop: Option<bool>,
+            showmail: Option<bool>,
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 let mut set_clauses = Vec::new();
@@ -129,6 +153,24 @@ pub mod mysql_impl {
                 }
                 if registration_time.is_some() {
                     set_clauses.push("registration_time = ?");
+                }
+                if email.is_some() {
+                    set_clauses.push("email = ?");
+                }
+                if url.is_some() {
+                    set_clauses.push("url = ?");
+                }
+                if vhost.is_some() {
+                    set_clauses.push("vhost = ?");
+                }
+                if noaccess.is_some() {
+                    set_clauses.push("noaccess = ?");
+                }
+                if noop.is_some() {
+                    set_clauses.push("noop = ?");
+                }
+                if showmail.is_some() {
+                    set_clauses.push("showmail = ?");
                 }
 
                 if !set_clauses.is_empty() {
@@ -143,6 +185,24 @@ pub mod mysql_impl {
                     if let Some(rt) = registration_time {
                         let timestamp = rt.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
                         query = query.bind(timestamp as i64);
+                    }
+                    if let Some(e) = email {
+                        query = query.bind(e);
+                    }
+                    if let Some(u) = url {
+                        query = query.bind(u);
+                    }
+                    if let Some(v) = vhost {
+                        query = query.bind(v);
+                    }
+                    if let Some(na) = noaccess {
+                        query = query.bind(na);
+                    }
+                    if let Some(n) = noop {
+                        query = query.bind(n);
+                    }
+                    if let Some(sm) = showmail {
+                        query = query.bind(sm);
                     }
                     query.bind(nick).execute(pool).await?;
                 }
@@ -286,6 +346,139 @@ pub mod mysql_impl {
             if let Some(pool) = &self.pool {
                 sqlx::query("DELETE FROM channels WHERE channel_name = ?")
                     .bind(channel_name)
+                    .execute(pool)
+                    .await?;
+            }
+            Ok(())
+        }
+
+        async fn create_access_table(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                sqlx::query(
+                    "CREATE TABLE IF NOT EXISTS channel_access (
+                        channel_name VARCHAR(255) NOT NULL,
+                        nick VARCHAR(255) NOT NULL,
+                        level VARCHAR(10) NOT NULL,
+                        added_by VARCHAR(255) NOT NULL,
+                        added_time BIGINT NOT NULL,
+                        PRIMARY KEY (channel_name, nick),
+                        FOREIGN KEY (channel_name) REFERENCES channels(channel_name) ON DELETE CASCADE
+                    )",
+                )
+                .execute(pool)
+                .await?;
+            }
+            Ok(())
+        }
+
+        async fn add_channel_access(
+            &mut self,
+            channel_name: &str,
+            nick: &str,
+            level: &str,
+            added_by: &str,
+            added_time: SystemTime,
+        ) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                let timestamp = added_time
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                sqlx::query(
+                    "INSERT INTO channel_access (channel_name, nick, level, added_by, added_time) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE level = VALUES(level), added_by = VALUES(added_by), added_time = VALUES(added_time)",
+                )
+                .bind(channel_name)
+                .bind(nick)
+                .bind(level)
+                .bind(added_by)
+                .bind(timestamp as i64)
+                .execute(pool)
+                .await?;
+            }
+            Ok(())
+        }
+
+        async fn get_channel_access(
+            &self,
+            channel_name: &str,
+            nick: &str,
+        ) -> Result<Option<(String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                let row: Option<(String, String, i64)> = sqlx::query_as(
+                    "SELECT level, added_by, added_time FROM channel_access WHERE channel_name = ? AND nick = ?",
+                )
+                .bind(channel_name)
+                .bind(nick)
+                .fetch_optional(pool)
+                .await?;
+
+                if let Some((level, added_by, timestamp)) = row {
+                    let added_time = SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
+                    return Ok(Some((level, added_by, added_time)));
+                }
+            }
+            Ok(None)
+        }
+
+        async fn get_channel_access_list(
+            &self,
+            channel_name: &str,
+            level: Option<&str>,
+        ) -> Result<Vec<(String, String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                let query = if let Some(l) = level {
+                    "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? AND level = ? ORDER BY added_time"
+                } else {
+                    "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? ORDER BY level, added_time"
+                };
+                
+                let mut query_builder = sqlx::query_as::<_, (String, String, String, i64)>(query);
+                query_builder = query_builder.bind(channel_name);
+                if let Some(l) = level {
+                    query_builder = query_builder.bind(l);
+                }
+                
+                let rows = query_builder.fetch_all(pool).await?;
+                let mut results = Vec::new();
+                for (nick, level, added_by, timestamp) in rows {
+                    let added_time = SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
+                    results.push((nick, level, added_by, added_time));
+                }
+                return Ok(results);
+            }
+            Ok(Vec::new())
+        }
+
+        async fn update_channel_access(
+            &mut self,
+            channel_name: &str,
+            nick: &str,
+            level: &str,
+            updated_by: &str,
+            updated_time: SystemTime,
+        ) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                let timestamp = updated_time
+                    .duration_since(SystemTime::UNIX_EPOCH)?
+                    .as_secs();
+                sqlx::query(
+                    "UPDATE channel_access SET level = ?, added_by = ?, added_time = ? WHERE channel_name = ? AND nick = ?",
+                )
+                .bind(level)
+                .bind(updated_by)
+                .bind(timestamp as i64)
+                .bind(channel_name)
+                .bind(nick)
+                .execute(pool)
+                .await?;
+            }
+            Ok(())
+        }
+
+        async fn delete_channel_access(&mut self, channel_name: &str, nick: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                sqlx::query("DELETE FROM channel_access WHERE channel_name = ? AND nick = ?")
+                    .bind(channel_name)
+                    .bind(nick)
                     .execute(pool)
                     .await?;
             }

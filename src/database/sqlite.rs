@@ -38,7 +38,13 @@ impl NickDatabase for SQLiteNickDatabase {
                     nick TEXT PRIMARY KEY,
                     password TEXT NOT NULL,
                     user TEXT NOT NULL,
-                    registration_time INTEGER NOT NULL
+                    registration_time INTEGER NOT NULL,
+                    email TEXT,
+                    url TEXT,
+                    vhost TEXT,
+                    noaccess INTEGER NOT NULL DEFAULT 0,
+                    noop INTEGER NOT NULL DEFAULT 0,
+                    showmail INTEGER NOT NULL DEFAULT 0
                 )",
         ) {
             Ok(_) => Ok(()),
@@ -52,6 +58,12 @@ impl NickDatabase for SQLiteNickDatabase {
         password: &str,
         user: &str,
         registration_time: SystemTime,
+        email: Option<&str>,
+        url: Option<&str>,
+        vhost: Option<&str>,
+        noaccess: bool,
+        noop: bool,
+        showmail: bool,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let timestamp = registration_time
@@ -59,21 +71,27 @@ impl NickDatabase for SQLiteNickDatabase {
             .map_err(|_| "Failed to get UNIX timestamp")?
             .as_secs();
         let query =
-            "INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)";
+            "INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, password)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((3, user)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((4, timestamp as i64)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((5, email)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((6, url)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((7, vhost)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((8, if noaccess { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((9, if noop { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((10, if showmail { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
     async fn get_nick_info(
         &self,
         nick: &str,
-    ) -> Result<Option<(String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
-        let query = "SELECT user, registration_time FROM nicks WHERE nick = ?";
+        let query = "SELECT user, registration_time, email, url, vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
@@ -85,7 +103,13 @@ impl NickDatabase for SQLiteNickDatabase {
                     statement.read(1).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
                 let registration_time =
                     SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp_secs as u64);
-                Ok(Some((user, registration_time)))
+                let email: Option<String> = statement.read(2).ok();
+                let url: Option<String> = statement.read(3).ok();
+                let vhost: Option<String> = statement.read(4).ok();
+                let noaccess: i64 = statement.read(5).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let noop: i64 = statement.read(6).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let showmail: i64 = statement.read(7).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                Ok(Some((user, registration_time, email, url, vhost, noaccess != 0, noop != 0, showmail != 0)))
             }
             Ok(sqlite::State::Done) => Ok(None), // No rows found
             Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>), // Error from statement.next()
@@ -130,6 +154,12 @@ impl NickDatabase for SQLiteNickDatabase {
         nick: &str,
         user: Option<&str>,
         registration_time: Option<SystemTime>,
+        email: Option<&str>,
+        url: Option<&str>,
+        vhost: Option<&str>,
+        noaccess: Option<bool>,
+        noop: Option<bool>,
+        showmail: Option<bool>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let mut updates = Vec::new();
@@ -142,6 +172,24 @@ impl NickDatabase for SQLiteNickDatabase {
                 .map_err(|_| "Failed to get UNIX timestamp")?
                 .as_secs();
             updates.push(("registration_time = ?", timestamp.to_string()));
+        }
+        if let Some(e) = email {
+            updates.push(("email = ?", e.to_string()));
+        }
+        if let Some(u) = url {
+            updates.push(("url = ?", u.to_string()));
+        }
+        if let Some(v) = vhost {
+            updates.push(("vhost = ?", v.to_string()));
+        }
+        if let Some(na) = noaccess {
+            updates.push(("noaccess = ?", if na { "1" } else { "0" }.to_string()));
+        }
+        if let Some(n) = noop {
+            updates.push(("noop = ?", if n { "1" } else { "0" }.to_string()));
+        }
+        if let Some(sm) = showmail {
+            updates.push(("showmail = ?", if sm { "1" } else { "0" }.to_string()));
         }
 
         if updates.is_empty() {
@@ -303,6 +351,133 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         let query = "DELETE FROM channels WHERE channel_name = ?";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
+    async fn create_access_table(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        match db_guard.execute(
+            "CREATE TABLE IF NOT EXISTS channel_access (
+                    channel_name TEXT NOT NULL,
+                    nick TEXT NOT NULL,
+                    level TEXT NOT NULL,
+                    added_by TEXT NOT NULL,
+                    added_time INTEGER NOT NULL,
+                    PRIMARY KEY (channel_name, nick),
+                    FOREIGN KEY (channel_name) REFERENCES channels(channel_name) ON DELETE CASCADE
+                )",
+        ) {
+            Ok(_) => Ok(()),
+            Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
+        }
+    }
+
+    async fn add_channel_access(
+        &mut self,
+        channel_name: &str,
+        nick: &str,
+        level: &str,
+        added_by: &str,
+        added_time: SystemTime,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let timestamp = added_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| "Failed to get UNIX timestamp")?
+            .as_secs();
+        let query =
+            "INSERT OR REPLACE INTO channel_access (channel_name, nick, level, added_by, added_time) VALUES (?, ?, ?, ?, ?)";
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((3, level)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((4, added_by)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((5, timestamp as i64)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
+    async fn get_channel_access(
+        &self,
+        channel_name: &str,
+        nick: &str,
+    ) -> Result<Option<(String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let query = "SELECT level, added_by, added_time FROM channel_access WHERE channel_name = ? AND nick = ?";
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+
+        match statement.next() {
+            Ok(sqlite::State::Row) => {
+                let level: String = statement.read(0).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let added_by: String = statement.read(1).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let timestamp_secs: i64 = statement.read(2).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let added_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp_secs as u64);
+                Ok(Some((level, added_by, added_time)))
+            }
+            Ok(sqlite::State::Done) => Ok(None),
+            Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
+        }
+    }
+
+    async fn get_channel_access_list(
+        &self,
+        channel_name: &str,
+        level: Option<&str>,
+    ) -> Result<Vec<(String, String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let query = if let Some(l) = level {
+            "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? AND level = ? ORDER BY added_time"
+        } else {
+            "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? ORDER BY level, added_time"
+        };
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        if let Some(l) = level {
+            statement.bind((2, l)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        }
+
+        let mut results = Vec::new();
+        while let Ok(sqlite::State::Row) = statement.next() {
+            let nick: String = statement.read(0).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            let level: String = statement.read(1).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            let added_by: String = statement.read(2).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            let timestamp_secs: i64 = statement.read(3).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            let added_time = SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(timestamp_secs as u64);
+            results.push((nick, level, added_by, added_time));
+        }
+        Ok(results)
+    }
+
+    async fn update_channel_access(
+        &mut self,
+        channel_name: &str,
+        nick: &str,
+        level: &str,
+        updated_by: &str,
+        updated_time: SystemTime,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let timestamp = updated_time
+            .duration_since(SystemTime::UNIX_EPOCH)
+            .map_err(|_| "Failed to get UNIX timestamp")?
+            .as_secs();
+        let query = "UPDATE channel_access SET level = ?, added_by = ?, added_time = ? WHERE channel_name = ? AND nick = ?";
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, level)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((2, updated_by)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((3, timestamp as i64)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((4, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((5, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
+    async fn delete_channel_access(&mut self, channel_name: &str, nick: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let query = "DELETE FROM channel_access WHERE channel_name = ? AND nick = ?";
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 }
