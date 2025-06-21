@@ -6,13 +6,6 @@ pub mod mysql_impl {
     use async_trait::async_trait;
     use sqlx::mysql::MySqlPoolOptions;
     use sqlx::MySqlPool;
-<<<<<<< HEAD
-<<<<<<< HEAD
-    use std::time::{Duration, SystemTime};
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 
     pub struct MysqlNickDatabase {
         pool: Option<MySqlPool>,
@@ -26,39 +19,15 @@ pub mod mysql_impl {
 
     #[async_trait]
     impl NickDatabase for MysqlNickDatabase {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
-=======
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             let pool = MySqlPoolOptions::new()
                 .max_connections(5)
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
-<<<<<<< HEAD
-<<<<<<< HEAD
             Ok(())
         }
 
-        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
-            if let Some(pool) = self.pool.take() {
-                pool.close().await;
-            }
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-            Ok(())
-        }
-
-=======
-            Ok(())
-        }
-
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = self.pool.take() {
                 pool.close().await;
@@ -88,9 +57,7 @@ pub mod mysql_impl {
             password: &str,
             user: &str,
             registration_time: SystemTime,
-<<<<<<< HEAD
-<<<<<<< HEAD
-        ) -> Result<(), Box<dyn Error>> {
+        ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 let timestamp = registration_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
@@ -104,73 +71,6 @@ pub mod mysql_impl {
                     .await?;
             }
             Ok(())
-        }
-
-        async fn get_nick_info(
-            &self,
-            nick: &str,
-        ) -> Result<Option<(String, SystemTime)>, Box<dyn Error>> {
-            if let Some(pool) = &self.pool {
-                let row: Option<(String, i64)> =
-                    sqlx::query_as("SELECT user, registration_time FROM nicks WHERE nick = ?")
-                        .bind(nick)
-                        .fetch_optional(pool)
-                        .await?;
-
-                if let Some((user, timestamp)) = row {
-                    let registration_time =
-                        SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
-                    return Ok(Some((user, registration_time)));
-                }
-            }
-            Ok(None)
-        }
-
-        async fn get_nick_password(&self, nick: &str) -> Result<Option<String>, Box<dyn Error>> {
-            if let Some(pool) = &self.pool {
-                let row: Option<(String,)> =
-                    sqlx::query_as("SELECT password FROM nicks WHERE nick = ?")
-                        .bind(nick)
-                        .fetch_optional(pool)
-                        .await?;
-                return Ok(row.map(|(password,)| password));
-            }
-            Ok(None)
-        }
-
-        async fn update_nick_password(&mut self, nick: &str, password: &str) -> Result<(), Box<dyn Error>> {
-            if let Some(pool) = &self.pool {
-                sqlx::query("UPDATE nicks SET password = ? WHERE nick = ?")
-                    .bind(password)
-                    .bind(nick)
-=======
-        ) -> Result<(), Box<dyn Error + Send + Sync>> {
-            if let Some(pool) = &self.pool {
-=======
-        ) -> Result<(), Box<dyn Error + Send + Sync>> {
-            if let Some(pool) = &self.pool {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-                let timestamp = registration_time
-                    .duration_since(SystemTime::UNIX_EPOCH)?
-                    .as_secs();
-                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)")
-                    .bind(nick)
-                    .bind(password)
-                    .bind(user)
-                    .bind(timestamp as i64)
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-                    .execute(pool)
-                    .await?;
-            }
-            Ok(())
-<<<<<<< HEAD
-<<<<<<< HEAD
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
 
         async fn get_nick_info(
@@ -214,10 +114,6 @@ pub mod mysql_impl {
                     .await?;
             }
             Ok(())
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         }
 
         async fn update_nick_info(
@@ -277,39 +173,15 @@ pub mod mysql_impl {
 
     #[async_trait]
     impl ChannelDatabase for MysqlChannelDatabase {
-<<<<<<< HEAD
-<<<<<<< HEAD
-        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error>> {
-=======
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-        async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             let pool = MySqlPoolOptions::new()
                 .max_connections(5)
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
-<<<<<<< HEAD
-<<<<<<< HEAD
             Ok(())
         }
 
-        async fn close(&mut self) -> Result<(), Box<dyn Error>> {
-            if let Some(pool) = self.pool.take() {
-                pool.close().await;
-            }
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-            Ok(())
-        }
-
-=======
-            Ok(())
-        }
-
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
         async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = self.pool.take() {
                 pool.close().await;
@@ -339,15 +211,7 @@ pub mod mysql_impl {
             channel_name: &str,
             creator_nick: &str,
             creation_time: SystemTime,
-<<<<<<< HEAD
-<<<<<<< HEAD
-        ) -> Result<(), Box<dyn Error>> {
-=======
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-        ) -> Result<(), Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             if let Some(pool) = &self.pool {
                 let timestamp = creation_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
@@ -367,15 +231,7 @@ pub mod mysql_impl {
         async fn get_channel_info(
             &self,
             channel_name: &str,
-<<<<<<< HEAD
-<<<<<<< HEAD
-        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error>> {
-=======
         ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
-        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             if let Some(pool) = &self.pool {
                 let row: Option<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
                     "SELECT creator_nick, creation_time, topic, modes FROM channels WHERE channel_name = ?",

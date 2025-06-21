@@ -382,11 +382,6 @@ pub(crate) enum Command<'a> {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
-    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    NS {
-        subcommand: &'a str,
-        params: Vec<&'a str>,
-    },
 }
 
 use Command::*;
@@ -852,26 +847,6 @@ impl<'a> Command<'a> {
                 } else {
                     Ok(DIE { message: None })
                 }
-            }
-            #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            "NS" => {
-                if message.params.is_empty() {
-                    return Err(NeedMoreParams(NSId));
-                }
-                Ok(NS {
-                    subcommand: message.params[0],
-                    params: message.params[1..].to_vec(),
-                })
-            }
-            #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            "NICKSERV" => {
-                if message.params.is_empty() {
-                    return Err(NeedMoreParams(NICKSERVId));
-                }
-                Ok(NICKSERV {
-                    subcommand: message.params[0],
-                    params: message.params[1..].to_vec(),
-                })
             }
             "SERVERS" => {
                 if message.params.is_empty() {

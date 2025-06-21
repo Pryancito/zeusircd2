@@ -21,9 +21,6 @@ use super::*;
 use serde::ser::StdError;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use argon2::{Argon2, PasswordHash, PasswordVerifier};
-use tokio::sync::mpsc::unbounded_channel;
 
 struct SupportTokenIntValue {
     name: &'static str,
@@ -314,139 +311,122 @@ impl super::MainState {
                 (None, false)
             }
         };
-
-        if registered && auth_opt.is_none() {
-            let client = conn_state.user_state.client_name();
-            self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client }).await?;
-            conn_state.quit.store(1, Ordering::SeqCst);
-            return Ok(());
-        }
-
-        let nick = conn_state.user_state.nick.as_ref().unwrap().clone();
-        let identified = false;
-        #[cfg(any(feature = "sqlite", feature = "mysql"))]
-        let mut registered_in_db = false;
-
-        #[cfg(any(feature = "sqlite", feature = "mysql"))]
-        if let Some(db_arc) = &self.databases.nick_db {
-            let db = db_arc.read().await;
-            if let Some(hash) = db.get_nick_password(&nick).await? {
-                registered_in_db = true;
-                if let Some(pass) = &conn_state.user_state.password {
-                    let hash = PasswordHash::new(&hash).map_err(|e| e.to_string())?;
-                    if Argon2::default().verify_password(pass.as_bytes(), &hash).is_ok() {
-                        identified = true;
+        if let Some(good) = auth_opt {
+            if good {
+                let user_nick = conn_state.user_state.nick.clone().unwrap();
+                let user_modes = {
+                    // add new user to hash map
+                    let user_state = &mut conn_state.user_state;
+                    user_state.registered = registered;
+                    let mut state = self.state.write().await;
+                    let user = User::new(
+                        &self.config,
+                        user_state,
+                        conn_state.sender.take().unwrap(),
+                        conn_state.quit_sender.take().unwrap(),
+                    );
+                    let umode_str = user.modes.to_string();
+                    if !state.users.contains_key(&user_nick) {
+                        state.add_user(&user_nick, user);
+                        umode_str
+                    } else {
+                        // if nick already used
+                        let client = conn_state.user_state.client_name();
+                        self.feed_msg(
+                            &mut conn_state.stream,
+                            ErrNicknameInUse433 {
+                                client,
+                                nick: &user_nick,
+                            },
+                        )
+                        .await?;
+                        return Ok(());
                     }
+                };
+
+                {
+                    // send message to user: welcome,....
+                    let user_state = &conn_state.user_state;
+                    let client = user_state.client_name();
+                    // welcome
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplWelcome001 {
+                            client,
+                            networkname: &self.config.network,
+                            nick: user_state.nick.as_deref().unwrap_or_default(),
+                            user: user_state.name.as_deref().unwrap_or_default(),
+                            host: &user_state.hostname,
+                        },
+                    )
+                    .await?;
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplYourHost002 {
+                            client,
+                            servername: &self.config.name,
+                            version: concat!(
+                                env!("CARGO_PKG_NAME"),
+                                "-",
+                                env!("CARGO_PKG_VERSION")
+                            ),
+                        },
+                    )
+                    .await?;
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplCreated003 {
+                            client,
+                            datetime: &self.created,
+                        },
+                    )
+                    .await?;
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplMyInfo004 {
+                            client,
+                            servername: &self.config.name,
+                            version: concat!(
+                                env!("CARGO_PKG_NAME"),
+                                "-",
+                                env!("CARGO_PKG_VERSION")
+                            ),
+                            avail_user_modes: "OiorwWzx",
+                            avail_chmodes: "IabehiklmnopqstvB",
+                            avail_chmodes_with_params: None,
+                        },
+                    )
+                    .await?;
+
+                    self.send_isupport(conn_state).await?;
                 }
-            }
-        }
 
-        let mut state = self.state.write().await;
-        if state.users.contains_key(&nick) {
-            let client = conn_state.user_state.client_name();
-            self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick: &nick }).await?;
-            conn_state.quit.store(1, Ordering::SeqCst);
-            return Ok(());
-        }
-        #[cfg(any(feature = "sqlite", feature = "mysql"))]
-        if registered_in_db && !identified {
-            if conn_state.user_state.password.is_some() {
+                // send messages from LUSERS and MOTD
+                self.process_lusers(conn_state).await?;
+                self.process_motd(conn_state, None).await?;
+
+                // send mode reply
                 let client = conn_state.user_state.client_name();
-                self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client }).await?;
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    RplUModeIs221 {
+                        client,
+                        user_modes: &user_modes,
+                    },
+                )
+                .await?;
+
+                // run ping waker for this connection
+                conn_state.run_ping_waker(&self.config);
+            } else {
+                // if authentication failed
+                info!("Auth failed for {}", conn_state.user_state.source);
+                let client = conn_state.user_state.client_name();
                 conn_state.quit.store(1, Ordering::SeqCst);
-                return Ok(());
+                self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client })
+                    .await?;
             }
         }
-
-        let (sender, _) = unbounded_channel();
-        conn_state.sender = Some(sender);
-        let (quit_sender, quit_receiver) = oneshot::channel();
-        conn_state.quit_receiver = quit_receiver.fuse();
-
-        let mut user = User::new(&self.config, &conn_state.user_state, conn_state.sender.as_ref().unwrap().clone(), quit_sender);
-        user.identified = identified;
-
-        conn_state.user_state.authenticated = true;
-        #[cfg(any(feature = "sqlite", feature = "mysql"))]
-        if let Some(user_config_idx) = auth_opt {
-            let user_config = &self.config.users.as_ref().unwrap()[user_config_idx];
-            if let Some(ref modes) = user_config.modes {
-                user.modes.apply_modes_str(modes);
-            }
-        }
-
-        let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        state.add_user(user_nick, user);
-        drop(state);
-
-        {
-            let user_state = &conn_state.user_state;
-            let client = user_state.client_name();
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplWelcome001 {
-                    client,
-                    networkname: &self.config.network,
-                    nick: user_state.nick.as_deref().unwrap_or_default(),
-                    user: user_state.name.as_deref().unwrap_or_default(),
-                    host: &user_state.hostname,
-                },
-            )
-            .await?;
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplYourHost002 {
-                    client,
-                    servername: &self.config.name,
-                    version: concat!(
-                        env!("CARGO_PKG_NAME"),
-                        "-",
-                        env!("CARGO_PKG_VERSION")
-                    ),
-                },
-            )
-            .await?;
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplCreated003 {
-                    client,
-                    datetime: &self.created,
-                },
-            )
-            .await?;
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplMyInfo004 {
-                    client,
-                    servername: &self.config.name,
-                    version: concat!(
-                        env!("CARGO_PKG_NAME"),
-                        "-",
-                        env!("CARGO_PKG_VERSION")
-                    ),
-                    avail_user_modes: "OiorwWzx",
-                    avail_chmodes: "IabehiklmnopqstvB",
-                    avail_chmodes_with_params: None,
-                },
-            )
-            .await?;
-            self.send_isupport(conn_state).await?;
-        }
-
-        self.process_lusers(conn_state).await?;
-        self.process_motd(conn_state, None).await?;
-        // run ping waker for this connection
-        conn_state.run_ping_waker(&self.config);
-
-        #[cfg(any(feature = "sqlite", feature = "mysql"))]
-        if registered_in_db && !identified {
-            self.feed_msg_source(
-                &mut conn_state.stream,
-                "NickServ",
-                format!("NOTICE {} :Este nick está registrado. Por favor, identifícate con /PASS o /NS IDENTIFY.", client),
-            ).await?;
-        }
-        println!("Authenticated user: {}", conn_state.user_state.source);
         Ok(())
     }
 
@@ -550,23 +530,16 @@ impl super::MainState {
         _: &'a str,
         _: &'a str,
         realname: &'a str,
-<<<<<<< HEAD
-<<<<<<< HEAD
-    ) -> Result<(), Box<dyn Error>> {
-        conn_state.user_state.set_name(username.to_string());
-        conn_state.user_state.realname = Some(realname.to_string());
-        // Si no estamos en negociación CAP y tenemos NICK, autenticamos
-        if !conn_state.caps_negotation && conn_state.user_state.nick.is_some() {
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !conn_state.user_state.authenticated {
             conn_state.user_state.set_name(username.to_string());
             conn_state.user_state.realname = Some(realname.to_string());
             // try authentication
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             self.authenticate(conn_state).await?;
+        } else {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(&mut conn_state.stream, ErrAlreadyRegistered462 { client })
+                .await?;
         }
         Ok(())
     }
@@ -592,7 +565,7 @@ impl super::MainState {
         if let Some(notifier) = conn_state.pong_notifier.take() {
             notifier
                 .send(())
-                .map_err(|_| "Failed to send pong notification".to_string())?;
+                .map_err(|_| "pong notifier error".to_string())?;
         }
         Ok(())
     }

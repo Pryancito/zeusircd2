@@ -26,17 +26,7 @@ use std::io::Read;
 use std::net::IpAddr;
 use std::str::FromStr;
 use clap::error::ErrorKind;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use clap::Parser;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use flagset::{flags, FlagSet};
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use serde::Serialize;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use std::net::SocketAddr;
 use validator::Validate;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use validator::ValidationError;
 
 use crate::utils::match_wildcard;
 use crate::utils::validate_channel;
@@ -352,16 +342,6 @@ pub(crate) struct UserConfig {
     #[validate(custom(function = "validate_password_hash"))]
     pub(crate) password: Option<String>,
     pub(crate) mask: Option<String>,
-}
-
-impl UserConfig {
-    pub(crate) fn check_password(&self, password: Option<&str>) -> bool {
-        match (&self.password, password) {
-            (Some(p1), Some(p2)) => p1 == p2,
-            (None, None) => true,
-            _ => false,
-        }
-    }
 }
 
 #[derive(Clone, PartialEq, Eq, Deserialize, Debug, Validate)]

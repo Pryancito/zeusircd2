@@ -54,8 +54,7 @@ use crate::command::*;
 use crate::config::*;
 use crate::reply::*;
 use crate::utils::*;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-use crate::database::{self, ChannelDatabase, NickDatabase};
+
 #[cfg(feature = "amqp")]
 use crate::state::server_communication::ServerCommunication;
 use Reply::*;
@@ -105,21 +104,6 @@ impl MainState {
         #[cfg(any(feature = "sqlite", feature = "mysql"))]
         let databases = if let Some(db_config) = &config.database {
             let (mut nick_db, mut chan_db): (Box<dyn NickDatabase>, Box<dyn ChannelDatabase>) =
-<<<<<<< HEAD
-<<<<<<< HEAD
-                match db_config.db_type.as_str() {
-                    #[cfg(feature = "sqlite")]
-                    "sqlite" => (
-                        Box::new(database::sqlite::SQLiteNickDatabase::new()),
-                        Box::new(database::sqlite::SQLiteChannelDatabase::new()),
-                    ),
-                    #[cfg(feature = "mysql")]
-                    "mysql" => (
-                        Box::new(database::mysql::MysqlNickDatabase::new()),
-                        Box::new(database::mysql::MysqlChannelDatabase::new()),
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                 match db_config.database.as_str() {
                     #[cfg(feature = "sqlite")]
                     "sqlite" => (
@@ -130,31 +114,14 @@ impl MainState {
                     "mysql" => (
                         Box::new(MysqlNickDatabase::new()),
                         Box::new(MysqlChannelDatabase::new()),
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                     ),
                     _ => return Err("Unsupported database type".to_string()),
                 };
 
-<<<<<<< HEAD
-<<<<<<< HEAD
-            nick_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
-            nick_db.create_table().await.map_err(|e| e.to_string())?;
-
-            chan_db.connect(&db_config.db_name).await.map_err(|e| e.to_string())?;
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             nick_db.connect(&db_config.url).await.map_err(|e| e.to_string())?;
             nick_db.create_table().await.map_err(|e| e.to_string())?;
 
             chan_db.connect(&db_config.url).await.map_err(|e| e.to_string())?;
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
             chan_db.create_table().await.map_err(|e| e.to_string())?;
 
             Databases {
@@ -518,29 +485,11 @@ impl MainState {
                     SERVERS{ target } => 
                         self.process_servers(conn_state, target.as_deref()).await,
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
-<<<<<<< HEAD
-<<<<<<< HEAD
-                    NS { subcommand, params } => {
-                        self.process_nickserv(conn_state, subcommand, params)
-                            .await
-                    }
-                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-                    NICKSERV { subcommand, params } => {
-                        self.process_nickserv(conn_state, subcommand, params)
-                            .await
-                    }
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                     NICKSERV{ subcommand, params } =>
                         self.process_nickserv(conn_state, subcommand, params).await,
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     NS{ subcommand, params } =>
                         self.process_nickserv(conn_state, subcommand, params).await,
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
                 }
             },
         }
@@ -1270,24 +1219,11 @@ mod channel_cmds;
 mod conn_cmds;
 mod rest_cmds;
 mod srv_query_cmds;
-<<<<<<< HEAD
-<<<<<<< HEAD
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-mod nickserv;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
-mod chanserv;
-=======
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
 pub mod nickserv;
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
 pub mod chanserv;
-<<<<<<< HEAD
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
-=======
->>>>>>> 5c86584 (next step to database integration. Now register/drop works ok.)
 
 #[cfg(feature = "amqp")]
 pub mod server_communication;
