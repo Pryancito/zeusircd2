@@ -29,6 +29,7 @@ impl super::MainState {
         conn_state: &mut ConnState,
         channels: Vec<&'a str>,
         keys_opt: Option<Vec<&'a str>>,
+        account_opt: Option<&'a str>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut statem = self.state.write().await;
         let state = statem.deref_mut();
@@ -212,7 +213,18 @@ impl super::MainState {
             for ((join, _), chname_str) in joined_created.iter().zip(channels.iter()) {
                 if *join {
                     let chanobj = state.channels.get(&chname_str.to_string()).unwrap();
-                    let join_msg = "JOIN ".to_string() + chname_str;
+                    let mut join_msg = "JOIN ".to_string() + chname_str;
+                    
+                    // Add account if extended-join is enabled and account is provided
+                    if conn_state.caps.extended_join {
+                        if let Some(account) = account_opt {
+                            join_msg.push_str(" ");
+                            join_msg.push_str(account);
+                        } else {
+                            join_msg.push_str(" *");
+                        }
+                    }
+                    
                     let client = conn_state.user_state.client_name();
                     let user = state.users.get(&user_nick).unwrap();
                     let source = if user.modes.cloacked {

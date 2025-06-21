@@ -366,7 +366,7 @@ impl MainState {
                 // if user not authenticated
                 match cmd {
                     CAP{ .. } | AUTHENTICATE{ .. } | PASS{ .. } | NICK{ .. } |
-                            USER{ .. } | QUIT{ } => {},
+                            USER{ .. } | QUIT{ } | SETNAME{ .. } => {},
                     _ => {
                         // expect CAP, AUTHENTICATE, PASS, NICK, USER, QUIT -
                         // other commands need authenication.
@@ -395,8 +395,8 @@ impl MainState {
                     OPER{ name, password } =>
                         self.process_oper(conn_state, name, password).await,
                     QUIT{ } => self.process_quit(conn_state).await,
-                    JOIN{ channels, keys } =>
-                        self.process_join(conn_state, channels, keys).await,
+                    JOIN{ channels, keys, account } =>
+                        self.process_join(conn_state, channels, keys, account).await,
                     PART{ channels, reason } =>
                         self.process_part(conn_state, channels, reason).await,
                     TOPIC{ channel, topic } =>
@@ -458,6 +458,10 @@ impl MainState {
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     NS{ subcommand, params } =>
                         self.process_nickserv(conn_state, subcommand, params).await,
+                    SETNAME { realname } =>
+                        self.process_setname(conn_state, realname).await,
+                    MONITOR { subcommand, targets } =>
+                        self.process_monitor(conn_state, subcommand, targets).await,
                 }
             },
         }
@@ -469,7 +473,8 @@ impl MainState {
         stream: &mut BufferedLineStream,
         t: T,
     ) -> Result<(), LinesCodecError> {
-        stream.feed(format!(":{} {}", self.config.name, t)).await
+        let message = format!(":{} {}", self.config.name, t);
+        stream.feed(message).await
     }
 
     // helper to feed messages

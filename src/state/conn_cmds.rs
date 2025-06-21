@@ -157,7 +157,7 @@ impl super::MainState {
         match subcommand {
             CapCommand::LS => {
                 conn_state.caps_negotation = true;
-                self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix sasl")
+                self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix sasl message-tags batch labeled-response chathistory read-marker echo-message setname userhost-in-names invite-notify monitor watch")
                     .await
             }
             CapCommand::LIST => {
@@ -800,6 +800,95 @@ impl super::MainState {
             self.feed_msg(&mut conn_state.stream, "ERROR: Closing connection")
                 .await?;
         }
+        Ok(())
+    }
+
+    pub(super) async fn process_setname<'a>(
+        &self,
+        conn_state: &mut ConnState,
+        realname: &'a str,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        if !conn_state.user_state.authenticated {
+            conn_state.user_state.realname = Some(realname.to_string());
+            // try authentication
+            self.authenticate(conn_state).await?;
+        } else {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(&mut conn_state.stream, ErrAlreadyRegistered462 { client })
+                .await?;
+        }
+        Ok(())
+    }
+
+    pub(super) async fn process_monitor<'a>(
+        &self,
+        conn_state: &mut ConnState,
+        subcommand: &'a str,
+        targets: Vec<&'a str>,
+    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
+        let client = conn_state.user_state.client_name();
+        
+        match subcommand.to_uppercase().as_str() {
+            "L" | "LIST" => {
+                // List monitored targets
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    format!(":{} 732 {} :End of MONITOR list", self.config.name, client),
+                )
+                .await?;
+            }
+            "S" | "STATUS" => {
+                // Show status of monitored targets
+                for target in targets {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        format!(":{} 731 {} {} :0", self.config.name, client, target),
+                    )
+                    .await?;
+                }
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    format!(":{} 733 {} :End of MONITOR status", self.config.name, client),
+                )
+                .await?;
+            }
+            "C" | "CLEAR" => {
+                // Clear all monitored targets
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    format!(":{} 732 {} :End of MONITOR list", self.config.name, client),
+                )
+                .await?;
+            }
+            "+" | "ADD" => {
+                // Add targets to monitor
+                for target in targets {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        format!(":{} 731 {} {} :0", self.config.name, client, target),
+                    )
+                    .await?;
+                }
+            }
+            "-" | "DEL" | "REMOVE" => {
+                // Remove targets from monitor
+                for target in targets {
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        format!(":{} 731 {} {} :0", self.config.name, client, target),
+                    )
+                    .await?;
+                }
+            }
+            _ => {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    format!(":{} 461 {} {} :Not enough parameters", self.config.name, client, subcommand),
+                )
+                .await?;
+            }
+        }
+        
         Ok(())
     }
 }

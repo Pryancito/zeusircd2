@@ -336,23 +336,6 @@ impl Decoder for IRCLinesCodec {
     }
 }
 
-pub(crate) fn validate_source(s: &str) -> bool {
-    if s.contains(':') {
-        // if have ':' then is not source
-        false
-    } else {
-        // must be in format nick[!username[@host]]
-        let excl = s.find('!');
-        let atchar = s.find('@');
-        if let Some(excl_pos) = excl {
-            if let Some(atchar_pos) = atchar {
-                return excl_pos < atchar_pos;
-            }
-        }
-        true
-    }
-}
-
 pub(crate) fn validate_username(username: &str) -> Result<(), ValidationError> {
     if !username.is_empty() && (username.as_bytes()[0] == b'#' || username.as_bytes()[0] == b'&') {
         Err(ValidationError::new(

@@ -687,6 +687,17 @@ pub(crate) struct CapState {
     pub(super) extended_join: bool,
     pub(super) server_time: bool,
     pub(super) sasl: bool,
+    pub(super) message_tags: bool,
+    pub(super) batch: bool,
+    pub(super) labeled_response: bool,
+    pub(super) chathistory: bool,
+    pub(super) read_marker: bool,
+    pub(super) echo_message: bool,
+    pub(super) setname: bool,
+    pub(super) userhost_in_names: bool,
+    pub(super) invite_notify: bool,
+    pub(super) monitor: bool,
+    pub(super) watch: bool,
 }
 
 impl Default for CapState {
@@ -699,6 +710,17 @@ impl Default for CapState {
             extended_join: false,
             server_time: false,
             sasl: false,
+            message_tags: false,
+            batch: false,
+            labeled_response: false,
+            chathistory: false,
+            read_marker: false,
+            echo_message: false,
+            setname: false,
+            userhost_in_names: false,
+            invite_notify: false,
+            monitor: false,
+            watch: false,
         }
     }
 }
@@ -726,6 +748,39 @@ impl fmt::Display for CapState {
         }
         if self.sasl {
             caps.push("sasl");
+        }
+        if self.message_tags {
+            caps.push("message-tags");
+        }
+        if self.batch {
+            caps.push("batch");
+        }
+        if self.labeled_response {
+            caps.push("labeled-response");
+        }
+        if self.chathistory {
+            caps.push("chathistory");
+        }
+        if self.read_marker {
+            caps.push("read-marker");
+        }
+        if self.echo_message {
+            caps.push("echo-message");
+        }
+        if self.setname {
+            caps.push("setname");
+        }
+        if self.userhost_in_names {
+            caps.push("userhost-in-names");
+        }
+        if self.invite_notify {
+            caps.push("invite-notify");
+        }
+        if self.monitor {
+            caps.push("monitor");
+        }
+        if self.watch {
+            caps.push("watch");
         }
         write!(f, "{}", caps.join(" "))
     }
@@ -760,6 +815,50 @@ impl CapState {
             }
             "sasl" => {
                 self.sasl = true;
+                true
+            }
+            "message-tags" => {
+                self.message_tags = true;
+                true
+            }
+            "batch" => {
+                self.batch = true;
+                true
+            }
+            "labeled-response" => {
+                self.labeled_response = true;
+                true
+            }
+            "chathistory" => {
+                self.chathistory = true;
+                true
+            }
+            "read-marker" => {
+                self.read_marker = true;
+                true
+            }
+            "echo-message" => {
+                self.echo_message = true;
+                true
+            }
+            "setname" => {
+                self.setname = true;
+                true
+            }
+            "userhost-in-names" => {
+                self.userhost_in_names = true;
+                true
+            }
+            "invite-notify" => {
+                self.invite_notify = true;
+                true
+            }
+            "monitor" => {
+                self.monitor = true;
+                true
+            }
+            "watch" => {
+                self.watch = true;
                 true
             }
             _ => false,

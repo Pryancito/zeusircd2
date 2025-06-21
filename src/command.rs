@@ -20,6 +20,7 @@
 use const_table::const_table;
 use std::error::Error;
 use std::fmt;
+use std::collections::HashMap;
 
 use crate::utils::*;
 
@@ -47,83 +48,126 @@ pub(crate) struct Message<'a> {
     source: Option<&'a str>,
     command: &'a str,
     params: Vec<&'a str>,
+    tags: HashMap<String, Option<String>>,
 }
 
 impl<'a> Message<'a> {
     pub(crate) fn from_shared_str(input: &'a str) -> Result<Self, MessageError> {
-        let trimmed = input.trim_start();
-
-        if !trimmed.is_empty() {
-            // start_pos after ':' if exists - to skip ':' before source
-            let start_pos = if trimmed.bytes().next() == Some(b':') {
-                1
-            } else {
-                0
-            };
-            let (rest, last_param) = if let Some((rest, lp)) = trimmed[start_pos..].split_once(':')
-            {
-                // get rest. add first character length to rest length.
-                (&trimmed[0..rest.len() + start_pos], Some(lp))
-            } else {
-                (trimmed, None)
-            };
-
-            let mut rest_words = rest.split_ascii_whitespace();
-            // find source
-            let source = if rest.bytes().next() == Some(b':') {
-                let s = &rest_words.next().unwrap()[1..];
-                if !validate_source(s) {
-                    return Err(MessageError::WrongSource);
-                }
-                Some(s) // return source
-            } else {
-                None
-            };
-            // get command name
-            let command = if let Some(cmd) = rest_words.next() {
-                cmd
-            } else {
-                return Err(MessageError::NoCommand);
-            };
-
-            // get command's parameters
-            let mut params = rest_words.collect::<Vec<_>>();
-            if let Some(lp) = last_param {
-                params.push(lp); // add last parameter
-            }
-
-            Ok(Message {
-                source,
-                command,
-                params,
-            })
-        } else {
-            Err(MessageError::Empty)
+        let input = input.trim();
+        if input.is_empty() {
+            return Err(MessageError::Empty);
         }
+
+        let mut tags = HashMap::new();
+        let mut rest = input;
+
+        // Parse message tags if present
+        if input.starts_with('@') {
+            if let Some(tag_end) = input.find(' ') {
+                let tag_str = &input[1..tag_end];
+                rest = &input[tag_end + 1..];
+                
+                // Parse individual tags
+                for tag in tag_str.split(';') {
+                    if let Some(equal_pos) = tag.find('=') {
+                        let key = &tag[..equal_pos];
+                        let value = if equal_pos + 1 < tag.len() {
+                            Some(tag[equal_pos + 1..].to_string())
+                        } else {
+                            None
+                        };
+                        tags.insert(key.to_string(), value);
+                    } else {
+                        tags.insert(tag.to_string(), None);
+                    }
+                }
+            } else {
+                return Err(MessageError::Empty);
+            }
+        }
+
+        // Parse source if present
+        let (source, rest) = if rest.starts_with(':') {
+            if let Some(source_end) = rest[1..].find(' ') {
+                let source = &rest[1..source_end + 1];
+                let rest = &rest[source_end + 2..];
+                (Some(source), rest)
+            } else {
+                return Err(MessageError::WrongSource);
+            }
+        } else {
+            (None, rest)
+        };
+
+        // Parse command and parameters
+        let parts: Vec<&str> = rest.split_whitespace().collect();
+        if parts.is_empty() {
+            return Err(MessageError::NoCommand);
+        }
+
+        let command = parts[0];
+        let mut params = Vec::new();
+        let mut i = 1;
+
+        while i < parts.len() {
+            if parts[i].starts_with(':') {
+                // Trailing parameter - reconstruct from original input to avoid lifetime issues
+                let trailing_start = rest.find(parts[i]).unwrap() + 1; // +1 to skip the ':'
+                let trailing = &rest[trailing_start..];
+                params.push(trailing);
+                break;
+            } else {
+                params.push(&parts[i]);
+                i += 1;
+            }
+        }
+
+        Ok(Message {
+            source,
+            command,
+            params,
+            tags,
+        })
     }
 
     // convert message to string with custom source.
     pub(crate) fn to_string_with_source(&self, source: &str) -> String {
-        let mut out = ":".to_string();
-        out += source;
-        out.push(' ');
-        out += self.command;
-        if !self.params.is_empty() {
-            // join with other and join parameters together except last parameter
-            self.params[..self.params.len() - 1].iter().for_each(|s| {
-                out.push(' ');
-                out += s;
-            });
-            let last = self.params[self.params.len() - 1];
-            // if last parameter have ':', spaces then add it as last (:last param).
-            if last.find(|c| c == ':' || c == ' ' || c == '\t').is_some() || last.is_empty() {
-                out += " :";
-            } else {
-                out.push(' ');
-            }
-            out += last;
+        let mut result = String::new();
+        
+        // Add tags if present
+        if !self.tags.is_empty() {
+            result.push('@');
+            let tag_strings: Vec<String> = self.tags.iter()
+                .map(|(k, v)| {
+                    if let Some(val) = v {
+                        format!("{}={}", k, val)
+                    } else {
+                        k.clone()
+                    }
+                })
+                .collect();
+            result.push_str(&tag_strings.join(";"));
+            result.push(' ');
         }
-        out
+        
+        // Add source
+        result.push_str(":");
+        result.push_str(source);
+        result.push(' ');
+        
+        // Add command
+        result.push_str(self.command);
+        
+        // Add parameters
+        for (i, param) in self.params.iter().enumerate() {
+            result.push(' ');
+            if i == self.params.len() - 1 && param.contains(' ') {
+                result.push(':');
+            }
+            result.push_str(param);
+        }
+        
+        result
     }
 }
 
@@ -179,6 +223,8 @@ pub(crate) enum CommandId {
     NICKSERVId = CommandName { name: "NICKSERV" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NSId = CommandName { name: "NS" },
+    SETNAMEId = CommandName { name: "SETNAME" },
+    MONITORId = CommandName { name: "MONITOR" },
 }
 
 use CommandId::*;
@@ -278,6 +324,7 @@ pub(crate) enum Command<'a> {
     JOIN {
         channels: Vec<&'a str>,
         keys: Option<Vec<&'a str>>,
+        account: Option<&'a str>,
     },
     PART {
         channels: Vec<&'a str>,
@@ -384,6 +431,10 @@ pub(crate) enum Command<'a> {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
+    SETNAME {
+        realname: &'a str,
+    },
+    MONITOR { subcommand: &'a str, targets: Vec<&'a str> },
 }
 
 use Command::*;
@@ -435,6 +486,8 @@ impl<'a> Command<'a> {
             NICKSERV { .. } => 40,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NS { .. } => 41,
+            SETNAME { .. } => 42,
+            MONITOR { .. } => 43,
         }
     }
 
@@ -560,6 +613,7 @@ impl<'a> Command<'a> {
                     let channels = param_it.next().unwrap().split(',').collect::<Vec<_>>();
                     // keys are separated by ','
                     let keys_opt = param_it.next().map(|x| x.split(',').collect::<Vec<_>>());
+                    let account_opt = param_it.next().map(|x| x);
                     if let Some(ref keys) = keys_opt {
                         if keys.len() != channels.len() {
                             return Err(ParameterDoesntMatch(JOINId, 1));
@@ -568,6 +622,7 @@ impl<'a> Command<'a> {
                     Ok(JOIN {
                         channels,
                         keys: keys_opt,
+                        account: account_opt.map(|v| &**v),
                     })
                 } else {
                     Err(NeedMoreParams(JOINId))
@@ -884,6 +939,25 @@ impl<'a> Command<'a> {
                     Err(NeedMoreParams(NSId))
                 }
             },
+            "SETNAME" => {
+                if !message.params.is_empty() {
+                    Ok(SETNAME {
+                        realname: message.params[0],
+                    })
+                } else {
+                    Err(NeedMoreParams(SETNAMEId))
+                }
+            },
+            "MONITOR" => {
+                if !message.params.is_empty() {
+                    Ok(MONITOR {
+                        subcommand: message.params[0],
+                        targets: message.params[1..].to_vec(),
+                    })
+                } else {
+                    Err(NeedMoreParams(MONITORId))
+                }
+            },
             s => Err(UnknownCommand(s.to_string())),
         }
     }
@@ -1079,6 +1153,16 @@ impl<'a> Command<'a> {
                     Err(UnknownSubcommand(NSId, subcommand.to_string()))
                 }
             }
+            SETNAME { realname } => validate_username(realname).map_err(|_| WrongParameter(SETNAMEId, 0)),
+            MONITOR { subcommand, .. } => {
+                if *subcommand == "drop" {
+                    Ok(())
+                } else if *subcommand == "register" {
+                    Ok(())
+                } else {
+                    Err(UnknownSubcommand(MONITORId, subcommand.to_string()))
+                }
+            },
             _ => Ok(()),
         }
     }
@@ -1453,7 +1537,8 @@ mod test {
         assert_eq!(
             Ok(JOIN {
                 channels: vec!["#cats", "&fruits", "#software"],
-                keys: None
+                keys: None,
+                account: None,
             }),
             Command::from_message(&Message {
                 source: None,
@@ -1465,7 +1550,8 @@ mod test {
         assert_eq!(
             Ok(JOIN {
                 channels: vec!["#cats", "&fruits", "#software"],
-                keys: Some(vec!["mycat", "apple", "wesnoth"])
+                keys: Some(vec!["mycat", "apple", "wesnoth"]),
+                account: None,
             }),
             Command::from_message(&Message {
                 source: None,
@@ -1495,7 +1581,8 @@ mod test {
         assert_eq!(
             Ok(JOIN {
                 channels: vec!["#cats", "&fru.its", "#software"],
-                keys: None
+                keys: None,
+                account: None,
             }),
             Command::from_message(&Message {
                 source: None,
