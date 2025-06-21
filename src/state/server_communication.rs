@@ -26,6 +26,12 @@ pub(crate) struct ServerCommunication {
     pub(super) state: Arc<RwLock<VolatileState>>,
 }
 
+impl Drop for ServerCommunication {
+    fn drop(&mut self) {
+        let _ = self.disconnect_server();
+    }
+}
+
 impl ServerCommunication {
     pub(crate) async fn new(state: &Arc<RwLock<VolatileState>>, amqp_url: &str, server: &String, exchange: &str, queue: &str) -> Self {
         let server_comm = Self {
@@ -89,7 +95,7 @@ impl ServerCommunication {
         Ok(())
     }
 
-    /*pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
+    pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
         if !self.connected {
             return Err("Not connected to this server".into());
         }
@@ -103,7 +109,7 @@ impl ServerCommunication {
         info!("Disconnected from AMQP.");
 
         Ok(())
-    }*/
+    }
 
     pub(crate) async fn publish_message(&self, message: &String) -> Result<(), Box<dyn Error>> {
         // Serializar el mensaje a JSON

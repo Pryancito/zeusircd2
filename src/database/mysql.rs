@@ -17,6 +17,18 @@ pub mod mysql_impl {
         }
     }
 
+    impl Drop for MysqlNickDatabase {
+        fn drop(&mut self) {
+            let _ = self.close();
+        }
+    }
+
+    impl Drop for MysqlChannelDatabase {
+        fn drop(&mut self) {
+            let _ = self.close();
+        }
+    }
+
     #[async_trait]
     impl NickDatabase for MysqlNickDatabase {
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -425,7 +437,7 @@ pub mod mysql_impl {
             level: Option<&str>,
         ) -> Result<Vec<(String, String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
-                let query = if let Some(l) = level {
+                let query = if let Some(_l) = level {
                     "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? AND level = ? ORDER BY added_time"
                 } else {
                     "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? ORDER BY level, added_time"

@@ -18,6 +18,18 @@ impl SQLiteNickDatabase {
     }
 }
 
+impl Drop for SQLiteNickDatabase {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
+impl Drop for SQLiteChannelDatabase {
+    fn drop(&mut self) {
+        let _ = self.close();
+    }
+}
+
 #[async_trait]
 impl NickDatabase for SQLiteNickDatabase {
     async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -426,7 +438,7 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         level: Option<&str>,
     ) -> Result<Vec<(String, String, String, SystemTime)>, Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
-        let query = if let Some(l) = level {
+        let query = if let Some(_l) = level {
             "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? AND level = ? ORDER BY added_time"
         } else {
             "SELECT nick, level, added_by, added_time FROM channel_access WHERE channel_name = ? ORDER BY level, added_time"
