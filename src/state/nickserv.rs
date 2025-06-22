@@ -30,7 +30,7 @@ impl super::MainState {
         subcommand: &'a str,
         params: Vec<&'a str>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let client = conn_state.user_state.client_name();
+        let client = conn_state.user_state.client_name().to_string();
         let nick = if let Some(nick) = &conn_state.user_state.nick {
             nick
         } else {
@@ -347,6 +347,10 @@ impl super::MainState {
                         let now = SystemTime::now();
                         db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), new_vhost.as_deref(), Some(now), Some(info.6), Some(info.7), Some(info.8)).await?;
                         
+                        // Actualizar el vhost en el estado de la conexión y en el estado global
+                        conn_state.user_state.cloack = new_vhost.clone().expect("ERROR.in.vHost");
+                        conn_state.user_state.update_source();
+                        
                         let status = if new_vhost.is_some() { 
                             format!("configurado a {}", new_vhost.as_ref().unwrap())
                         } else { 
@@ -380,7 +384,14 @@ impl super::MainState {
                     if let Some(nick_password) = db.get_nick_password(target_nick).await? {
                         // Verificar la contraseña
                         if argon2_verify_password_async(password.to_string(), nick_password).await.is_ok() {
-                            // Contraseña correcta, proceder con el cambio de nick
+                            // Contraseña correcta, obtener vhost y proceder.
+                            let nick_info = db.get_nick_info(target_nick).await?;
+                            let vhost = if let Some(info) = nick_info {
+                                info.4.clone()
+                            } else {
+                                None
+                            };
+                            
                             drop(db); // Liberar el lock de la base de datos
                             
                             // Verificar si el nick está en uso y desconectar si es necesario
@@ -412,6 +423,8 @@ impl super::MainState {
                             // Actualizar el nick en el estado del usuario
                             conn_state.user_state.set_nick(target_nick.to_string());
                             conn_state.user_state.password = Some(password.to_string());
+                            conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
+                            conn_state.user_state.update_source();
                             
                             // Actualizar en el estado global
                             let mut state = self.state.write().await;

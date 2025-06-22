@@ -1327,7 +1327,21 @@ impl super::MainState {
                                 if !user.modes.cloacked {
                                     set_modes_string.push('x');
                                     user.modes.cloacked = true;
-                                    user.cloack = user.get_display_hostname(&self.config.cloack);
+                                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                                    {
+                                        if let Some(db_arc) = &self.databases.nick_db {
+                                            let db = db_arc.read().await;
+                                            if let Ok(Some(info)) = db.get_nick_info(&user_nick).await {
+                                                if let Some(vhost) = info.4 {
+                                                    user.cloack = vhost.clone();
+                                                } else {
+                                                    user.cloack = user.get_display_hostname(&self.config.cloack);
+                                                }
+                                            }
+                                        } else {
+                                            user.cloack = user.get_display_hostname(&self.config.cloack);
+                                        }
+                                    }
                                 }
                             } else {
                                 unset_modes_string.push('x');

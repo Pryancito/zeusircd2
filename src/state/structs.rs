@@ -285,7 +285,6 @@ impl User {
                 parts.iter().any(|part| is_ip(part))
             }
 
-            // Determinar el tipo de hostname y aplicar el cloak apropiado
             if is_ip(&self.hostname) {
                 if self.hostname.contains(':') {
                     // Es una IPv6 directa

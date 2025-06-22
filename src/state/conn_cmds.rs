@@ -408,17 +408,33 @@ impl super::MainState {
         if let Some(good) = auth_opt {
             if good {
                 let user_nick = conn_state.user_state.nick.clone().unwrap();
+
                 let user_modes = {
                     // add new user to hash map
                     let user_state = &mut conn_state.user_state;
                     user_state.registered = registered;
                     let mut state = self.state.write().await;
-                    let user = User::new(
+                    let mut user = User::new(
                         &self.config,
                         user_state,
                         conn_state.sender.take().unwrap(),
                         conn_state.quit_sender.take().unwrap(),
                     );
+                    // Aplicar vhost si está configurado
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    {
+                        if let Some(db_arc) = &self.databases.nick_db {
+                            let db = db_arc.read().await;
+                            if let Ok(Some(info)) = db.get_nick_info(&user_nick).await {
+                                if let Some(vhost) = info.4 {
+                                    user.cloack = vhost.clone();
+                                    conn_state.user_state.cloack = vhost.clone();
+                                    conn_state.user_state.update_source();
+                                }
+                                user.modes.registered = true;
+                            }
+                        }
+                    }
                     let umode_str = user.modes.to_string();
                     if !state.users.contains_key(&user_nick) {
                         state.add_user(&user_nick, user);
