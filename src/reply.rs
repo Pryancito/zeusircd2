@@ -502,6 +502,7 @@ pub(crate) enum Reply<'a> {
     ErrCannotDoCommand972 {
         client: &'a str,
     },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
     ErrNickRegistered465 {
         client: &'a str,
     },

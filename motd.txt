@@ -1,0 +1,21 @@
+  ____ _           _                     
+ / ___| |__   __ _| |_ ___ _ __ ___  ___ 
+| |   | '_ \ / _` | __/ _ \ '__/ _ \/ __|
+| |___| | | | (_| | ||  __/ | | (_) \__ \
+ \____|_| |_|\__,_|\__\___|_|  \___/|___/
+                                         
+-----------------------------------------
+
+Servidores y puertos:
+ - Plain Socket:    irc.chateros.org:6667
+ - Secure TLS       irc.chateros.org:6697
+ - Secure Websocket irc.chateros.org:9000
+
+Canales Oficiales:
+ - #Ayuda
+ - #Chateros
+
+No spam/flood.
+La conexion a nuestra red es un privilegio
+Reservado el derecho de admision.
+Buen Chat !

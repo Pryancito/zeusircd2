@@ -53,14 +53,30 @@ impl super::MainState {
                 },
             )
             .await?;
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplMotd372 {
-                    client,
-                    motd: &self.config.motd,
-                },
-            )
-            .await?;
+            if let Ok(file) = std::fs::File::open("motd.txt") {
+                let reader = std::io::BufReader::new(file);
+                for line in std::io::BufRead::lines(reader) {
+                    if let Ok(motd_line) = line {
+                        self.feed_msg(
+                            &mut conn_state.stream,
+                            RplMotd372 {
+                                client,
+                                motd: &motd_line,
+                            },
+                        )
+                        .await?;
+                    }
+                }
+            } else {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    RplMotd372 {
+                        client,
+                        motd: &self.config.motd,
+                    },
+                )
+                .await?;
+            }
             self.feed_msg(&mut conn_state.stream, RplEndOfMotd376 { client })
                 .await?;
         }
