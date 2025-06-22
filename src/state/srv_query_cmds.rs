@@ -1373,8 +1373,7 @@ impl super::MainState {
                 .await?;
             }
         } // if modes.len() != 0
-        conn_state.user_state.cloack = user.cloack.clone();
-        conn_state.user_state.update_source();
+        conn_state.user_state.set_cloack(user.cloack.clone());
         Ok(())
     }
 
