@@ -989,8 +989,7 @@ impl super::MainState {
                     for (other_nick, _) in &channel.users {
                         if other_nick != nick {
                             if let Some(other_user) = state.users.get(other_nick) {
-                                let _ = other_user.send_msg_display(
-                                    &conn_state.user_state.source,
+                                let _ = other_user.send_msg_user(
                                     format!("QUIT :{}", conn_state.user_state.quit_reason),
                                 );
                             }

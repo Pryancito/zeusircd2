@@ -255,6 +255,13 @@ impl User {
         self.sender.send(format!(":{} {}", source, t))
     }
 
+    pub(super) fn send_msg_user<T: fmt::Display>(
+        &self,
+        t: T,
+    ) -> Result<(), SendError<String>> {
+        self.sender.send(format!(":{} {}", self.source, t))
+    }
+
     pub(super) fn get_display_hostname(&self, config: &Cloacked) -> String {
         if self.modes.cloacked {
             // Función auxiliar para verificar si una cadena es una IP

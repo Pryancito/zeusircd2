@@ -548,6 +548,9 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                                 if conn_state.is_websocket() {
                                     user.modes.websocket = true;
                                 }
+                                user.source = format!("{}!{}@{}",
+                                    nick, user.name, user.cloack.clone());
+                                conn_state.user_state.source = user.source.clone();
                             }
                         }
                     }
