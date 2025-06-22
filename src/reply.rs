@@ -1190,6 +1190,7 @@ impl<'a> fmt::Display for Reply<'a> {
             ErrCannotDoCommand972 { client } => {
                 write!(f, "972 {} :Can not do command", client)
             }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
             ErrNickRegistered465 { client } => {
                 write!(f, "465 {} :Nick registrado. Usa /NS IDENTIFY <nickname> <password> o /PASS <password>", client)
             }
