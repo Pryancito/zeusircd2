@@ -945,6 +945,10 @@ impl ConnUserState {
         self.nick = Some(nick);
         self.update_source();
     }
+    pub(super) fn set_cloack(&mut self, cloack: String) {
+        self.cloack = cloack;
+        self.update_source();
+    }
 }
 
 #[derive(Debug)]

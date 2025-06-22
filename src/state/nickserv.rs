@@ -382,8 +382,9 @@ impl super::MainState {
                         db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), new_vhost.as_deref(), Some(now), Some(info.6), Some(info.7), Some(info.8)).await?;
                         
                         // Actualizar el vhost en el estado de la conexión y en el estado global
-                        conn_state.user_state.cloack = new_vhost.clone().expect("ERROR.in.vHost");
-                        conn_state.user_state.update_source();
+                        if new_vhost.is_some() {
+                            conn_state.user_state.set_cloack(new_vhost.clone().expect("ERROR.in.vHost"));
+                        }
                         
                         let status = if new_vhost.is_some() { 
                             format!("configurado a {}", new_vhost.as_ref().unwrap())
@@ -476,8 +477,7 @@ impl super::MainState {
                             conn_state.user_state.password = Some(password.to_string());
 
                             if vhost.is_some() {
-                                conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
-                                conn_state.user_state.update_source();
+                                conn_state.user_state.set_cloack(vhost.clone().expect("ERROR.in.vHost"));
                             }
                             
                             // Actualizar en el estado global
@@ -510,7 +510,7 @@ impl super::MainState {
                             self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Te has identificado exitosamente como {}.", new_client, target_nick)).await?;
                             
                             // Notificar a todos los usuarios sobre el cambio de nick
-                            let nick_change_msg = format!("NICK :{}", target_nick);
+                            let nick_change_msg = format!(":{} NICK :{}", old_source, target_nick);
                             for u in state.users.values() {
                                 let _ = u.send_msg_display(&old_source, nick_change_msg.clone());
                             }

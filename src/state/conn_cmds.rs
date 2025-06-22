@@ -427,9 +427,7 @@ impl super::MainState {
                             let db = db_arc.read().await;
                             if let Ok(Some(info)) = db.get_nick_info(&user_nick).await {
                                 if let Some(vhost) = info.4 {
-                                    user.cloack = vhost.clone();
-                                    conn_state.user_state.cloack = vhost.clone();
-                                    conn_state.user_state.update_source();
+                                    conn_state.user_state.set_cloack(vhost);
                                 }
                                 user.modes.registered = true;
                             }
