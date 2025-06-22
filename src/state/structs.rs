@@ -232,7 +232,8 @@ impl User {
         self.hostname = user_state.hostname.clone();
         self.source = user_state.source.clone();
         if self.modes.cloacked {
-            self.cloack = self.get_display_hostname(config);
+            let cloack = self.get_display_hostname(config);
+            self.cloack = cloack;
         } else {
             self.cloack = self.hostname.clone();
         }
