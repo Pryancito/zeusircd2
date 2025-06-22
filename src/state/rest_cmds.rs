@@ -22,6 +22,8 @@ use std::collections::HashSet;
 use serde::ser::StdError;
 use std::iter::FromIterator;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::env;
+use std::process::Command;
 
 impl super::MainState {
     async fn process_privmsg_notice<'a>(
@@ -709,17 +711,27 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        let client = conn_state.user_state.client_name();
-        self.feed_msg(
-            &mut conn_state.stream,
-            ErrUnknownError400 {
-                client,
-                command: "RESTART",
-                subcommand: None,
-                info: "Server unsupported",
-            },
-        )
-        .await?;
+        let user_nick = conn_state.user_state.nick.as_ref().unwrap();
+        let state = self.state.read().await;
+        let user = state.users.get(user_nick).unwrap();
+        if user.modes.is_local_oper() {
+            let msg = Message::from_shared_str("NOTICE Servidor reiniciándose, por favor reconéctese.")?;
+            for u in state.users.values() {
+                u.send_message(&msg, &conn_state.user_state.source)?;
+            }
+            let exe = env::current_exe().unwrap();
+        
+            Command::new(exe)
+                .args(env::args().skip(1))
+                .spawn()
+                .expect("Fallo al intentar reiniciar el servidor");
+        
+            std::process::exit(0);
+        } else {
+            let client = conn_state.user_state.client_name();
+            self.feed_msg(&mut conn_state.stream, ErrNoPrivileges481 { client })
+                .await?;
+        }
         Ok(())
     }
 
