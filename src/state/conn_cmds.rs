@@ -21,7 +21,11 @@ use super::*;
 use serde::ser::StdError;
 use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
-
+use crate::utils::argon2_verify_password_async;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use base64;
+#[cfg(any(feature = "sqlite", feature = "mysql"))]
+use base64::Engine;
 struct SupportTokenIntValue {
     name: &'static str,
     value: usize,
@@ -302,8 +306,39 @@ impl super::MainState {
                                     true
                                 };
 
-                                user_state.authenticated = good;
-                                (Some(good), registered)
+                                // Verificar contraseña de NickServ si el nick está registrado
+                                let nickserv_auth = if good && user_state.nick.is_some() {
+                                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                                    {
+                                        if let Some(db_arc) = &self.databases.nick_db {
+                                            let db = db_arc.read().await;
+                                            if let Some(nick_password) = db.get_nick_password(user_state.nick.as_ref().unwrap()).await? {
+                                                // Si el nick está registrado, verificar la contraseña
+                                                if let Some(ref entered_pwd) = user_state.password {
+                                                    argon2_verify_password_async(entered_pwd.clone(), nick_password).await.is_ok()
+                                                } else {
+                                                    // Si no se proporcionó contraseña pero el nick está registrado, fallar
+                                                    false
+                                                }
+                                            } else {
+                                                // Si el nick no está registrado, permitir la autenticación
+                                                true
+                                            }
+                                        } else {
+                                            // Si no hay base de datos configurada, permitir la autenticación
+                                            true
+                                        }
+                                    }
+                                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                                    {
+                                        true
+                                    }
+                                } else {
+                                    good
+                                };
+
+                                user_state.authenticated = nickserv_auth;
+                                (Some(nickserv_auth), registered)
                             } else {
                                 user_state.authenticated = true;
                                 (Some(true), registered)
@@ -521,6 +556,7 @@ impl super::MainState {
 
         // Procesar datos de autenticación
         let mechanism = conn_state.user_state.sasl_mechanism.as_ref().unwrap();
+        
         let auth_result = match mechanism.as_str() {
             "PLAIN" => {
                 crate::utils::verify_sasl_plain(data, &self.config).await
@@ -538,22 +574,73 @@ impl super::MainState {
                 return Ok(());
             }
         };
-
+        
         match auth_result {
             Ok(Some(username)) => {
-                // Autenticación exitosa
-                conn_state.user_state.sasl_authenticated = true;
-                conn_state.user_state.name = Some(username);
-                let client = conn_state.user_state.client_name();
-                self.feed_msg(
-                    &mut conn_state.stream,
-                    RplSaslSuccess903 { client },
-                )
-                .await?;
-                
-                // Intentar autenticación completa si tenemos nick
-                if conn_state.user_state.nick.is_some() {
-                    self.authenticate(conn_state).await?;
+                // Autenticación SASL exitosa - ahora verificar contra NickServ
+                let nickserv_auth = {
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    {
+                        // Verificar si el username es un nick registrado en NickServ
+                        if let Some(db_arc) = &self.databases.nick_db {
+                            let db = db_arc.read().await;
+                            if let Some(nick_password) = db.get_nick_password(&username).await? {
+                                // Si el nick está registrado, verificar la contraseña
+                                // Para SASL, usamos la contraseña que ya fue verificada
+                                // pero necesitamos verificar que coincida con la de NickServ
+                                let auth_string = match base64::engine::general_purpose::STANDARD.decode(data) {
+                                    Ok(d) => d,
+                                    Err(_) => return Ok(()),
+                                };
+                                let auth_string = match String::from_utf8(auth_string) {
+                                    Ok(s) => s,
+                                    Err(_) => return Ok(()),
+                                };
+                                let parts: Vec<&str> = auth_string.split('\0').collect();
+                                if parts.len() == 3 {
+                                    let password = parts[2];
+                                    argon2_verify_password_async(password.to_string(), nick_password).await.is_ok()
+                                } else {
+                                    false
+                                }
+                            } else {
+                                // Si el nick no está registrado, permitir la autenticación
+                                true
+                            }
+                        } else {
+                            // Si no hay base de datos configurada, permitir la autenticación
+                            true
+                        }
+                    }
+                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                    {
+                        true
+                    }
+                };
+
+                if nickserv_auth {
+                    // Autenticación exitosa
+                    conn_state.user_state.sasl_authenticated = true;
+                    conn_state.user_state.name = Some(username);
+                    let client = conn_state.user_state.client_name();
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        RplSaslSuccess903 { client },
+                    )
+                    .await?;
+                    
+                    // Intentar autenticación completa si tenemos nick
+                    if conn_state.user_state.nick.is_some() {
+                        self.authenticate(conn_state).await?;
+                    }
+                } else {
+                    // Autenticación fallida
+                    let client = conn_state.user_state.client_name();
+                    self.feed_msg(
+                        &mut conn_state.stream,
+                        ErrSaslFail904 { client },
+                    )
+                    .await?;
                 }
             }
             Ok(None) => {

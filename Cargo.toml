@@ -4,11 +4,11 @@ authors = ["Moebius ( Pryan )"]
 license = "LGPL-2.1-or-later"
 version = "0.0.4"
 edition = "2024"
-rust-version = "1.85.0"
+rust-version = "1.87.0"
 description = "Next generation ircd"
 repository = "https://github.com/Pryancito/zeusircd2"
 categories = ["network-programming"]
-keywords = ["irc"]
+keywords = ["ircd"]
 
 [dependencies]
 tokio = { version = "1.45.1", features = [ "full" ] }

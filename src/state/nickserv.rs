@@ -21,6 +21,7 @@ use super::*;
 use serde::ser::StdError;
 use std::time::SystemTime;
 use crate::utils::argon2_hash_password;
+use crate::utils::validate_username;
 
 impl super::MainState {
     pub(super) async fn process_nickserv<'a>(
@@ -54,7 +55,7 @@ impl super::MainState {
 
                     let password_hash = argon2_hash_password(password);
 
-                    db.add_nick(nick, &password_hash, &conn_state.user_state.source, SystemTime::now(), None, None, None, false, false, false).await?;
+                    db.add_nick(nick, &password_hash, &conn_state.user_state.source, SystemTime::now(), None, None, None, None, false, false, false).await?;
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick '{}' ha sido registrado.", client, nick)).await?;
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
@@ -103,26 +104,32 @@ impl super::MainState {
             }
             "email" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Falta el email.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Uso: /NS EMAIL <email> o /NS EMAIL OFF", client)).await?;
                     return Ok(());
                 }
 
                 let email = params[0];
                 
-                // Validar formato de email
-                if !email.contains('@') || !email.contains('.') {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Formato de email inválido.", client)).await?;
-                    return Ok(());
-                }
-
                 if let Some(db_arc) = &self.databases.nick_db {
                     let mut db = db_arc.write().await;
                     
                     // Verificar si el nick está registrado
                     if let Some(info) = db.get_nick_info(nick).await? {
-                        // Actualizar el email
-                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), Some(email), info.3.as_deref(), info.4.as_deref(), Some(info.5), Some(info.6), Some(info.7)).await?;
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu email ha sido actualizado a: {}", client, email)).await?;
+                        if email.to_lowercase() == "off" {
+                            // Desactivar email
+                            db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), None, info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu email ha sido desactivado.", client)).await?;
+                        } else {
+                            // Validar formato de email
+                            if !email.contains('@') || !email.contains('.') {
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Formato de email inválido.", client)).await?;
+                                return Ok(());
+                            }
+                            
+                            // Actualizar el email
+                            db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), Some(email), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu email ha sido actualizado a: {}", client, email)).await?;
+                        }
                     } else {
                         self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu nick no está registrado.", client)).await?;
                     }
@@ -132,33 +139,38 @@ impl super::MainState {
             }
             "url" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Falta la URL.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Uso: /NS URL <url> o /NS URL OFF", client)).await?;
                     return Ok(());
                 }
 
                 let url = params[0];
                 
-                // Validar formato de URL básico
-                if !url.starts_with("http://") && !url.starts_with("https://") {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La URL debe comenzar con http:// o https://", client)).await?;
-                    return Ok(());
-                }
-
                 if let Some(db_arc) = &self.databases.nick_db {
                     let mut db = db_arc.write().await;
                     
                     // Verificar si el nick está registrado
                     if let Some(info) = db.get_nick_info(nick).await? {
-                        // Actualizar la URL
-                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), Some(url), info.4.as_deref(), Some(info.5), Some(info.6), Some(info.7)).await?;
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu URL ha sido actualizada a: {}", client, url)).await?;
+                        if url.to_lowercase() == "off" {
+                            // Desactivar URL
+                            db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), None, info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu URL ha sido desactivada.", client)).await?;
+                        } else {
+                            // Validar formato de URL básico
+                            if !url.starts_with("http://") && !url.starts_with("https://") {
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La URL debe comenzar con http:// o https://", client)).await?;
+                                return Ok(());
+                            }
+                            
+                            // Actualizar la URL
+                            db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), Some(url), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu URL ha sido actualizada a: {}", client, url)).await?;
+                        }
                     } else {
                         self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu nick no está registrado.", client)).await?;
                     }
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
                 }
-                
             }
             "noaccess" => {
                 if params.is_empty() {
@@ -184,7 +196,7 @@ impl super::MainState {
                     // Verificar si el nick objetivo está registrado
                     if let Some(info) = db.get_nick_info(nick).await? {
                         // Actualizar el estado de noaccess
-                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), Some(new_noaccess), Some(info.6), Some(info.7)).await?;
+                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(new_noaccess), Some(info.6), Some(info.7)).await?;
                         
                         let status = if new_noaccess { "activada" } else { "desactivada" };
                         self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La opción noaccess para {} ha sido {}.", client, nick, status)).await?;
@@ -196,15 +208,16 @@ impl super::MainState {
                 }
             }
             "noop" => {
-                if params.is_empty() {
+                if params.len() < 2 {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Uso: /NS NOOP <nick> <on|off>", client)).await?;
                     return Ok(());
                 }
 
-                let action = params[0];
+                let target_nick = params[0];
+                let action = params[1];
                 
                 // Validar el nick objetivo
-                if let Err(_) = validate_username(nick) {
+                if let Err(_) = validate_username(target_nick) {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick inválido.", client)).await?;
                     return Ok(());
                 }
@@ -223,14 +236,14 @@ impl super::MainState {
                     let mut db = db_arc.write().await;
                     
                     // Verificar si el nick objetivo está registrado
-                    if let Some(info) = db.get_nick_info(nick).await? {
+                    if let Some(info) = db.get_nick_info(target_nick).await? {
                         // Actualizar el estado de noop
-                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), Some(info.5), Some(new_noop), Some(info.7)).await?;
+                        db.update_nick_info(target_nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(new_noop), Some(info.7)).await?;
                         
                         let status = if new_noop { "activada" } else { "desactivada" };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La opción noop para {} ha sido {}.", client, nick, status)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La opción noop para {} ha sido {}.", client, target_nick, status)).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick {} no está registrado.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick {} no está registrado.", client, target_nick)).await?;
                     }
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
@@ -261,7 +274,7 @@ impl super::MainState {
                     // Verificar si el nick objetivo está registrado
                     if let Some(info) = db.get_nick_info(nick).await? {
                         // Actualizar el estado de showmail
-                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), Some(info.5), Some(info.6), Some(new_showmail)).await?;
+                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(new_showmail)).await?;
                         
                         let status = if new_showmail { "activada" } else { "desactivada" };
                         self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La opción showmail para {} ha sido {}.", client, nick, status)).await?;
@@ -297,6 +310,55 @@ impl super::MainState {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
                 }
                 
+            }
+            "vhost" => {
+                if params.is_empty() {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Uso: /NS VHOST <off|tu.ip.virtual>", client)).await?;
+                    return Ok(());
+                }
+
+                let vhost_action = params[0];
+                let new_vhost = if vhost_action == "off" {
+                    None
+                } else {
+                    Some(vhost_action.to_string())
+                };
+
+                if let Some(db_arc) = &self.databases.nick_db {
+                    let mut db = db_arc.write().await;
+                    
+                    // Verificar si el nick está registrado
+                    if let Some(info) = db.get_nick_info(nick).await? {
+                        // Verificar si han pasado 24 horas desde el último cambio
+                        if let Some(last_vhost_change) = info.5 {
+                            let now = SystemTime::now();
+                            if let Ok(duration) = now.duration_since(last_vhost_change) {
+                                if duration.as_secs() < 86400 { // 24 horas en segundos
+                                    let remaining = 86400 - duration.as_secs();
+                                    let hours = remaining / 3600;
+                                    let minutes = (remaining % 3600) / 60;
+                                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Debes esperar {}h {}m antes de cambiar tu vhost nuevamente.", client, hours, minutes)).await?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        
+                        // Actualizar el vhost y el timestamp
+                        let now = SystemTime::now();
+                        db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(info.1), info.2.as_deref(), info.3.as_deref(), new_vhost.as_deref(), Some(now), Some(info.6), Some(info.7), Some(info.8)).await?;
+                        
+                        let status = if new_vhost.is_some() { 
+                            format!("configurado a {}", new_vhost.as_ref().unwrap())
+                        } else { 
+                            "desactivado".to_string()
+                        };
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu vhost ha sido {}.", client, status)).await?;
+                    } else {
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick {} no está registrado.", client, nick)).await?;
+                    }
+                } else {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                }
             }
             _ => {
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Comando desconocido. Usa /NS HELP.", client)).await?;

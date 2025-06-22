@@ -458,6 +458,12 @@ impl MainState {
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     NS{ subcommand, params } =>
                         self.process_nickserv(conn_state, subcommand, params).await,
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    CHANSERV{ subcommand, params } =>
+                        self.process_chanserv(conn_state, subcommand, params).await,
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    CS{ subcommand, params } =>
+                        self.process_chanserv(conn_state, subcommand, params).await,
                     SETNAME { realname } =>
                         self.process_setname(conn_state, realname).await,
                     MONITOR { subcommand, targets } =>

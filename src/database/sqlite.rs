@@ -54,6 +54,7 @@ impl NickDatabase for SQLiteNickDatabase {
                     email TEXT,
                     url TEXT,
                     vhost TEXT,
+                    last_vhost INTEGER,
                     noaccess INTEGER NOT NULL DEFAULT 0,
                     noop INTEGER NOT NULL DEFAULT 0,
                     showmail INTEGER NOT NULL DEFAULT 0
@@ -73,6 +74,7 @@ impl NickDatabase for SQLiteNickDatabase {
         email: Option<&str>,
         url: Option<&str>,
         vhost: Option<&str>,
+        last_vhost: Option<SystemTime>,
         noaccess: bool,
         noop: bool,
         showmail: bool,
@@ -82,8 +84,12 @@ impl NickDatabase for SQLiteNickDatabase {
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_err(|_| "Failed to get UNIX timestamp")?
             .as_secs();
+        let last_vhost_timestamp = last_vhost
+            .map(|lv| lv.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()))
+            .transpose()
+            .map_err(|_| "Failed to get UNIX timestamp for last_vhost")?;
         let query =
-            "INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, password)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
@@ -92,18 +98,19 @@ impl NickDatabase for SQLiteNickDatabase {
         statement.bind((5, email)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((6, url)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((7, vhost)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((8, if noaccess { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((9, if noop { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((10, if showmail { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((8, last_vhost_timestamp.map(|t| t as i64))).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((9, if noaccess { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((10, if noop { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((11, if showmail { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
     async fn get_nick_info(
         &self,
         nick: &str,
-    ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, Option<SystemTime>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
-        let query = "SELECT user, registration_time, email, url, vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?";
+        let query = "SELECT user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
@@ -118,10 +125,14 @@ impl NickDatabase for SQLiteNickDatabase {
                 let email: Option<String> = statement.read(2).ok();
                 let url: Option<String> = statement.read(3).ok();
                 let vhost: Option<String> = statement.read(4).ok();
-                let noaccess: i64 = statement.read(5).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-                let noop: i64 = statement.read(6).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-                let showmail: i64 = statement.read(7).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-                Ok(Some((user, registration_time, email, url, vhost, noaccess != 0, noop != 0, showmail != 0)))
+                let last_vhost_timestamp: Option<i64> = statement.read(5).ok();
+                let last_vhost = last_vhost_timestamp.map(|ts| 
+                    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(ts as u64)
+                );
+                let noaccess: i64 = statement.read(6).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let noop: i64 = statement.read(7).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let showmail: i64 = statement.read(8).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                Ok(Some((user, registration_time, email, url, vhost, last_vhost, noaccess != 0, noop != 0, showmail != 0)))
             }
             Ok(sqlite::State::Done) => Ok(None), // No rows found
             Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>), // Error from statement.next()
@@ -169,6 +180,7 @@ impl NickDatabase for SQLiteNickDatabase {
         email: Option<&str>,
         url: Option<&str>,
         vhost: Option<&str>,
+        last_vhost: Option<SystemTime>,
         noaccess: Option<bool>,
         noop: Option<bool>,
         showmail: Option<bool>,
@@ -193,6 +205,13 @@ impl NickDatabase for SQLiteNickDatabase {
         }
         if let Some(v) = vhost {
             updates.push(("vhost = ?", v.to_string()));
+        }
+        if let Some(lv) = last_vhost {
+            let timestamp = lv
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|_| "Failed to get UNIX timestamp for last_vhost")?
+                .as_secs();
+            updates.push(("last_vhost = ?", timestamp.to_string()));
         }
         if let Some(na) = noaccess {
             updates.push(("noaccess = ?", if na { "1" } else { "0" }.to_string()));

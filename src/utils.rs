@@ -723,7 +723,7 @@ pub(crate) async fn verify_sasl_plain(
     }
     
     let _authz_id = parts[0]; // authorization_id (ignorado por ahora)
-    let authn_id = parts[1];  // authentication_id (username)
+    let authn_id = parts[1];  // authentication_id (username/nick)
     let password = parts[2];  // password
     
     // Verificar contra la configuración de usuarios
@@ -751,6 +751,12 @@ pub(crate) async fn verify_sasl_plain(
         {
             return Ok(Some(authn_id.to_string()));
         }
+    }
+    
+    // Si no hay usuarios configurados ni contraseña por defecto,
+    // retornar el username para que se verifique contra NickServ
+    if config.users.is_none() && config.password.is_none() {
+        return Ok(Some(authn_id.to_string()));
     }
     
     Ok(None)

@@ -58,6 +58,7 @@ pub mod mysql_impl {
                         email VARCHAR(255),
                         url VARCHAR(255),
                         vhost VARCHAR(255),
+                        last_vhost BIGINT,
                         noaccess BOOLEAN NOT NULL DEFAULT FALSE,
                         noop BOOLEAN NOT NULL DEFAULT FALSE,
                         showmail BOOLEAN NOT NULL DEFAULT FALSE
@@ -78,6 +79,7 @@ pub mod mysql_impl {
             email: Option<&str>,
             url: Option<&str>,
             vhost: Option<&str>,
+            last_vhost: Option<SystemTime>,
             noaccess: bool,
             noop: bool,
             showmail: bool,
@@ -86,7 +88,10 @@ pub mod mysql_impl {
                 let timestamp = registration_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
-                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                let last_vhost_timestamp = last_vhost
+                    .map(|lv| lv.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()))
+                    .transpose()?;
+                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
                     .bind(nick)
                     .bind(password)
                     .bind(user)
@@ -94,6 +99,7 @@ pub mod mysql_impl {
                     .bind(email)
                     .bind(url)
                     .bind(vhost)
+                    .bind(last_vhost_timestamp.map(|t| t as i64))
                     .bind(noaccess)
                     .bind(noop)
                     .bind(showmail)
@@ -106,18 +112,21 @@ pub mod mysql_impl {
         async fn get_nick_info(
             &self,
             nick: &str,
-        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
+        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, Option<SystemTime>, bool, bool, bool)>, Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
-                let row: Option<(String, i64, Option<String>, Option<String>, Option<String>, bool, bool, bool)> =
-                    sqlx::query_as("SELECT user, registration_time, email, url, vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?")
+                let row: Option<(String, i64, Option<String>, Option<String>, Option<String>, Option<i64>, bool, bool, bool)> =
+                    sqlx::query_as("SELECT user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail FROM nicks WHERE nick = ?")
                         .bind(nick)
                         .fetch_optional(pool)
                         .await?;
 
-                if let Some((user, timestamp, email, url, vhost, noaccess, noop, showmail)) = row {
+                if let Some((user, timestamp, email, url, vhost, last_vhost_timestamp, noaccess, noop, showmail)) = row {
                     let registration_time =
                         SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
-                    return Ok(Some((user, registration_time, email, url, vhost, noaccess, noop, showmail)));
+                    let last_vhost = last_vhost_timestamp.map(|ts| 
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(ts as u64)
+                    );
+                    return Ok(Some((user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail)));
                 }
             }
             Ok(None)
@@ -154,6 +163,7 @@ pub mod mysql_impl {
             email: Option<&str>,
             url: Option<&str>,
             vhost: Option<&str>,
+            last_vhost: Option<SystemTime>,
             noaccess: Option<bool>,
             noop: Option<bool>,
             showmail: Option<bool>,
@@ -174,6 +184,9 @@ pub mod mysql_impl {
                 }
                 if vhost.is_some() {
                     set_clauses.push("vhost = ?");
+                }
+                if last_vhost.is_some() {
+                    set_clauses.push("last_vhost = ?");
                 }
                 if noaccess.is_some() {
                     set_clauses.push("noaccess = ?");
@@ -206,6 +219,10 @@ pub mod mysql_impl {
                     }
                     if let Some(v) = vhost {
                         query = query.bind(v);
+                    }
+                    if let Some(lv) = last_vhost {
+                        let timestamp = lv.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
+                        query = query.bind(timestamp as i64);
                     }
                     if let Some(na) = noaccess {
                         query = query.bind(na);

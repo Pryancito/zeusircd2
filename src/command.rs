@@ -223,6 +223,10 @@ pub(crate) enum CommandId {
     NICKSERVId = CommandName { name: "NICKSERV" },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NSId = CommandName { name: "NS" },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    CHANSERVId = CommandName { name: "CHANSERV" },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    CSId = CommandName { name: "CS" },
     SETNAMEId = CommandName { name: "SETNAME" },
     MONITORId = CommandName { name: "MONITOR" },
 }
@@ -431,6 +435,16 @@ pub(crate) enum Command<'a> {
         subcommand: &'a str,
         params: Vec<&'a str>,
     },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    CHANSERV {
+        subcommand: &'a str,
+        params: Vec<&'a str>,
+    },
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    CS {
+        subcommand: &'a str,
+        params: Vec<&'a str>,
+    },
     SETNAME {
         realname: &'a str,
     },
@@ -486,8 +500,12 @@ impl<'a> Command<'a> {
             NICKSERV { .. } => 40,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NS { .. } => 41,
-            SETNAME { .. } => 42,
-            MONITOR { .. } => 43,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            CHANSERV { .. } => 42,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            CS { .. } => 43,
+            SETNAME { .. } => 44,
+            MONITOR { .. } => 45,
         }
     }
 
@@ -939,6 +957,28 @@ impl<'a> Command<'a> {
                     Err(NeedMoreParams(NSId))
                 }
             },
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "CHANSERV" => {
+                if !message.params.is_empty() {
+                    Ok(CHANSERV {
+                        subcommand: message.params[0],
+                        params: message.params[1..].to_vec(),
+                    })
+                } else {
+                    Err(NeedMoreParams(CHANSERVId))
+                }
+            },
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            "CS" => {
+                if !message.params.is_empty() {
+                    Ok(CS {
+                        subcommand: message.params[0],
+                        params: message.params[1..].to_vec(),
+                    })
+                } else {
+                    Err(NeedMoreParams(CSId))
+                }
+            },
             "SETNAME" => {
                 if !message.params.is_empty() {
                     Ok(SETNAME {
@@ -1151,6 +1191,26 @@ impl<'a> Command<'a> {
                     Ok(())
                 } else {
                     Err(UnknownSubcommand(NSId, subcommand.to_string()))
+                }
+            }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            CHANSERV { subcommand, .. } => {
+                if *subcommand == "drop" {
+                    Ok(())
+                } else if *subcommand == "register" {
+                    Ok(())
+                } else {
+                    Err(UnknownSubcommand(CHANSERVId, subcommand.to_string()))
+                }
+            }
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+            CS { subcommand, .. } => {
+                if *subcommand == "drop" {
+                    Ok(())
+                } else if *subcommand == "register" {
+                    Ok(())
+                } else {
+                    Err(UnknownSubcommand(CSId, subcommand.to_string()))
                 }
             }
             SETNAME { realname } => validate_username(realname).map_err(|_| WrongParameter(SETNAMEId, 0)),
