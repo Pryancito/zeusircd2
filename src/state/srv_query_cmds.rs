@@ -463,7 +463,8 @@ impl super::MainState {
         let if_half_op = chum.is_half_operator();
         let user = users.get(&client.to_string());
         let if_oper = user.as_ref().unwrap().modes.is_local_oper();
-
+        let mut set_mode_args: Vec<&str> = Vec::new();
+        let mut unset_mode_args: Vec<&str> = Vec::new();
         if modes.is_empty() {
             self.feed_msg(
                 &mut conn_state.stream,
@@ -945,16 +946,12 @@ impl super::MainState {
                                     'o' => {
                                         if if_op {
                                             if mode_set {
-                                                // put to applied modes
-                                                modes_params_string += " +o ";
-                                                modes_params_string += arg;
-
+                                                set_modes_string.push('o');
+                                                set_mode_args.push(arg);
                                                 chanobj.add_operator(arg);
                                             } else {
-                                                // put to applied modes
-                                                modes_params_string += " -o ";
-                                                modes_params_string += arg;
-
+                                                unset_modes_string.push('o');
+                                                unset_mode_args.push(arg);
                                                 chanobj.remove_operator(arg);
                                             }
                                         }
@@ -962,16 +959,12 @@ impl super::MainState {
                                     'v' => {
                                         if if_half_op {
                                             if mode_set {
-                                                // put to applied modes
-                                                modes_params_string += " +v ";
-                                                modes_params_string += arg;
-
+                                                set_modes_string.push('v');
+                                                set_mode_args.push(arg);
                                                 chanobj.add_voice(arg);
                                             } else {
-                                                // put to applied modes
-                                                modes_params_string += " -v ";
-                                                modes_params_string += arg;
-
+                                                unset_modes_string.push('v');
+                                                unset_mode_args.push(arg);
                                                 chanobj.remove_voice(arg);
                                             }
                                         }
@@ -979,16 +972,12 @@ impl super::MainState {
                                     'h' => {
                                         if if_op {
                                             if mode_set {
-                                                // put to applied modes
-                                                modes_params_string += " +h ";
-                                                modes_params_string += arg;
-
+                                                set_modes_string.push('h');
+                                                set_mode_args.push(arg);
                                                 chanobj.add_half_operator(arg);
                                             } else {
-                                                // put to applied modes
-                                                modes_params_string += " -h ";
-                                                modes_params_string += arg;
-
+                                                unset_modes_string.push('h');
+                                                unset_mode_args.push(arg);
                                                 chanobj.remove_half_operator(arg);
                                             }
                                         }
@@ -996,16 +985,12 @@ impl super::MainState {
                                     'q' => {
                                         if chum.founder {
                                             if mode_set {
-                                                // put to applied modes
-                                                modes_params_string += " +q ";
-                                                modes_params_string += arg;
-
+                                                set_modes_string.push('q');
+                                                set_mode_args.push(arg);
                                                 chanobj.add_founder(arg);
                                             } else {
-                                                // put to applied modes
-                                                modes_params_string += " -q ";
-                                                modes_params_string += arg;
-
+                                                unset_modes_string.push('q');
+                                                unset_mode_args.push(arg);
                                                 chanobj.remove_founder(arg);
                                             }
                                         }
@@ -1013,16 +998,12 @@ impl super::MainState {
                                     'a' => {
                                         if chum.is_protected() {
                                             if mode_set {
-                                                // put to applied modes
-                                                modes_params_string += " +a ";
-                                                modes_params_string += arg;
-
+                                                set_modes_string.push('a');
+                                                set_mode_args.push(arg);
                                                 chanobj.add_protected(arg);
                                             } else {
-                                                // put to applied modes
-                                                modes_params_string += " -a ";
-                                                modes_params_string += arg;
-
+                                                unset_modes_string.push('a');
+                                                unset_mode_args.push(arg);
                                                 chanobj.remove_protected(arg);
                                             }
                                         }
@@ -1045,10 +1026,8 @@ impl super::MainState {
                             if if_half_op {
                                 chanobj.modes.client_limit = if mode_set {
                                     let arg = margs_it.next().unwrap();
-                                    // put to applied modes
-                                    modes_params_string += " +l ";
-                                    modes_params_string += arg;
-
+                                    set_modes_string.push('l');
+                                    set_mode_args.push(arg);
                                     Some(arg.parse::<usize>().unwrap())
                                 } else {
                                     // put to applied modes
@@ -1061,13 +1040,10 @@ impl super::MainState {
                             if if_half_op {
                                 chanobj.modes.key = if mode_set {
                                     let arg = margs_it.next().unwrap();
-                                    // put to applied modes
-                                    modes_params_string += " +k ";
-                                    modes_params_string += arg;
-
+                                    set_modes_string.push('k');
+                                    set_mode_args.push(arg);
                                     Some(arg.to_string())
                                 } else {
-                                    // put to applied modes
                                     unset_modes_string.push('k');
                                     None
                                 };
@@ -1076,7 +1052,6 @@ impl super::MainState {
                         'i' => {
                             if if_half_op {
                                 chanobj.modes.invite_only = mode_set;
-                                // put to applied modes
                                 if mode_set {
                                     set_modes_string.push('i');
                                 } else {
@@ -1087,7 +1062,6 @@ impl super::MainState {
                         'm' => {
                             if if_half_op {
                                 chanobj.modes.moderated = mode_set;
-                                // put to applied modes
                                 if mode_set {
                                     set_modes_string.push('m');
                                 } else {
@@ -1098,7 +1072,6 @@ impl super::MainState {
                         't' => {
                             if if_half_op {
                                 chanobj.modes.protected_topic = mode_set;
-                                // put to applied modes
                                 if mode_set {
                                     set_modes_string.push('t');
                                 } else {
@@ -1109,7 +1082,6 @@ impl super::MainState {
                         'n' => {
                             if if_half_op {
                                 chanobj.modes.no_external_messages = mode_set;
-                                // put to applied modes
                                 if mode_set {
                                     set_modes_string.push('n');
                                 } else {
@@ -1120,7 +1092,6 @@ impl super::MainState {
                         's' => {
                             if if_half_op {
                                 chanobj.modes.secret = mode_set;
-                                // put to applied modes
                                 if mode_set {
                                     set_modes_string.push('s');
                                 } else {
@@ -1136,26 +1107,27 @@ impl super::MainState {
             // send applied modes to user
             if !set_modes_string.is_empty()
                 || !unset_modes_string.is_empty()
-                || !modes_params_string.is_empty()
             {
                 let mut mode_string = String::new();
                 if !set_modes_string.is_empty() {
                     mode_string.push('+');
                     mode_string += &set_modes_string;
+                    if !set_mode_args.is_empty() {
+                        mode_string.push(' ');
+                        mode_string += &set_mode_args.join(" ");
+                    }
                 }
                 if !unset_modes_string.is_empty() {
+                    if !mode_string.is_empty() {
+                        mode_string.push(' ');
+                    }
                     mode_string.push('-');
                     mode_string += &unset_modes_string;
-                }
-                let mode_string = if !modes_params_string.is_empty() {
-                    if !mode_string.is_empty() {
-                        [&mode_string, &modes_params_string[1..]].join(" ")
-                    } else {
-                        modes_params_string[1..].to_string()
+                    if !unset_mode_args.is_empty() {
+                        mode_string.push(' ');
+                        mode_string += &unset_mode_args.join(" ");
                     }
-                } else {
-                    mode_string
-                };
+                }
                 let mode_string = format!("MODE {} {}", target, mode_string);
 
                 for unick in chanobj.users.keys() {
