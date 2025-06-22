@@ -45,7 +45,24 @@ impl super::MainState {
                     return Ok(());
                 }
                 let password = params[0];
-
+                
+                // Validar la contraseña
+                if password.len() < 6 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña debe tener al menos 6 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                if password.len() > 32 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña no puede tener más de 32 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                // Verificar que la contraseña no contenga caracteres no permitidos
+                if !password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña contiene caracteres no permitidos.", client)).await?;
+                    return Ok(());
+                }
+                
                 if let Some(db_arc) = &self.databases.nick_db {
                     let mut db = db_arc.write().await;
                     if db.get_nick_info(nick).await?.is_some() {
@@ -293,6 +310,23 @@ impl super::MainState {
 
                 let new_password = params[0];
                 
+                // Validar la contraseña
+                if new_password.len() < 6 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña debe tener al menos 6 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                if new_password.len() > 32 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña no puede tener más de 32 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                // Verificar que la contraseña no contenga caracteres no permitidos
+                if !new_password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña contiene caracteres no permitidos.", client)).await?;
+                    return Ok(());
+                }
+                
                 // Validar que la contraseña no esté vacía
                 if new_password.is_empty() {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña no puede estar vacía.", client)).await?;
@@ -373,6 +407,23 @@ impl super::MainState {
                 let target_nick = params[0];
                 let password = params[1];
                 
+                // Validar la contraseña
+                if password.len() < 6 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña debe tener al menos 6 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                if password.len() > 32 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña no puede tener más de 32 caracteres.", client)).await?;
+                    return Ok(());
+                }
+                
+                // Verificar que la contraseña no contenga caracteres no permitidos
+                if !password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La contraseña contiene caracteres no permitidos.", client)).await?;
+                    return Ok(());
+                }
+                
                 // Validar el nickname objetivo
                 if let Err(_) = validate_username(target_nick) {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick inválido.", client)).await?;
@@ -423,8 +474,11 @@ impl super::MainState {
                             // Actualizar el nick en el estado del usuario
                             conn_state.user_state.set_nick(target_nick.to_string());
                             conn_state.user_state.password = Some(password.to_string());
-                            conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
-                            conn_state.user_state.update_source();
+
+                            if vhost.is_some() {
+                                conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
+                                conn_state.user_state.update_source();
+                            }
                             
                             // Actualizar en el estado global
                             let mut state = self.state.write().await;
