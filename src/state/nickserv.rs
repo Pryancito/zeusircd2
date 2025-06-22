@@ -510,7 +510,7 @@ impl super::MainState {
                             self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Te has identificado exitosamente como {}.", new_client, target_nick)).await?;
                             
                             // Notificar a todos los usuarios sobre el cambio de nick
-                            let nick_change_msg = format!(":{} NICK :{}", old_source, target_nick);
+                            let nick_change_msg = format!("NICK {}", target_nick);
                             for u in state.users.values() {
                                 let _ = u.send_msg_display(&old_source, nick_change_msg.clone());
                             }
