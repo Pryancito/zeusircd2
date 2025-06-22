@@ -1029,7 +1029,10 @@ impl<'a> Command<'a> {
                     Ok(())
                 }
             }
-            NICK { nickname } => validate_username(nickname).map_err(|_| WrongParameter(NICKId, 0)),
+            NICK { nickname } => {
+                validate_username(nickname).map_err(|_| WrongParameter(NICKId, 0))?;
+                Ok(())
+            }
             USER { username, .. } => {
                 validate_username(username).map_err(|_| WrongParameter(USERId, 0))
             }
@@ -1175,22 +1178,18 @@ impl<'a> Command<'a> {
             }),
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NICKSERV { subcommand, .. } => {
-                if *subcommand == "drop" {
-                    Ok(())
-                } else if *subcommand == "register" {
-                    Ok(())
-                } else {
-                    Err(UnknownSubcommand(NICKSERVId, subcommand.to_string()))
+                match subcommand.to_lowercase().as_str() {
+                    "register" | "drop" | "email" | "url" | "noaccess" | "noop" | 
+                    "showmail" | "password" | "vhost" | "identify" | "help" => Ok(()),
+                    _ => Err(UnknownSubcommand(NICKSERVId, subcommand.to_string()))
                 }
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             NS { subcommand, .. } => {
-                if *subcommand == "drop" {
-                    Ok(())
-                } else if *subcommand == "register" {
-                    Ok(())
-                } else {
-                    Err(UnknownSubcommand(NSId, subcommand.to_string()))
+                match subcommand.to_lowercase().as_str() {
+                    "register" | "drop" | "email" | "url" | "noaccess" | "noop" | 
+                    "showmail" | "password" | "vhost" | "identify" | "help" => Ok(()),
+                    _ => Err(UnknownSubcommand(NSId, subcommand.to_string()))
                 }
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]

@@ -254,9 +254,15 @@ impl super::MainState {
                 
                 // Si ya está autenticado con SASL, considerar como autenticado
                 if user_state.sasl_authenticated {
-                    user_state.authenticated = true;
-                    user_state.registered = true;
-                    (Some(true), true)
+                    // Solo autenticar si tiene nick establecido
+                    if user_state.nick.is_some() {
+                        user_state.authenticated = true;
+                        user_state.registered = true;
+                        (Some(true), true)
+                    } else {
+                        // No autenticar hasta que tenga nick
+                        (None, false)
+                    }
                 } else {
                     // nick must be defined
                     if user_state.nick.is_some() {
@@ -317,8 +323,15 @@ impl super::MainState {
                                                 if let Some(ref entered_pwd) = user_state.password {
                                                     argon2_verify_password_async(entered_pwd.clone(), nick_password).await.is_ok()
                                                 } else {
-                                                    // Si no se proporcionó contraseña pero el nick está registrado, fallar
-                                                    false
+                                                    // Si no se proporcionó contraseña pero el nick está registrado, desconectar
+                                                    let client = conn_state.user_state.client_name();
+                                                    self.feed_msg(
+                                                        &mut conn_state.stream,
+                                                        ErrNickRegistered465 { client },
+                                                    )
+                                                    .await?;
+                                                    conn_state.quit.store(1, Ordering::SeqCst);
+                                                    return Ok(());
                                                 }
                                             } else {
                                                 // Si el nick no está registrado, permitir la autenticación
@@ -340,8 +353,46 @@ impl super::MainState {
                                 user_state.authenticated = nickserv_auth;
                                 (Some(nickserv_auth), registered)
                             } else {
-                                user_state.authenticated = true;
-                                (Some(true), registered)
+                                // No hay contraseña configurada en el servidor, pero verificar NickServ
+                                let nickserv_auth = if user_state.nick.is_some() {
+                                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                                    {
+                                        if let Some(db_arc) = &self.databases.nick_db {
+                                            let db = db_arc.read().await;
+                                            if let Some(nick_password) = db.get_nick_password(user_state.nick.as_ref().unwrap()).await? {
+                                                // Si el nick está registrado, verificar la contraseña
+                                                if let Some(ref entered_pwd) = user_state.password {
+                                                    argon2_verify_password_async(entered_pwd.clone(), nick_password).await.is_ok()
+                                                } else {
+                                                    // Si no se proporcionó contraseña pero el nick está registrado, desconectar
+                                                    let client = conn_state.user_state.client_name();
+                                                    self.feed_msg(
+                                                        &mut conn_state.stream,
+                                                        ErrNickRegistered465 { client },
+                                                    )
+                                                    .await?;
+                                                    conn_state.quit.store(1, Ordering::SeqCst);
+                                                    return Ok(());
+                                                }
+                                            } else {
+                                                // Si el nick no está registrado, permitir la autenticación
+                                                true
+                                            }
+                                        } else {
+                                            // Si no hay base de datos configurada, permitir la autenticación
+                                            true
+                                        }
+                                    }
+                                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                                    {
+                                        true
+                                    }
+                                } else {
+                                    true
+                                };
+
+                                user_state.authenticated = nickserv_auth;
+                                (Some(nickserv_auth), registered)
                             }
                         } else {
                             (None, false)
@@ -673,8 +724,6 @@ impl super::MainState {
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         if !conn_state.user_state.authenticated {
             conn_state.user_state.password = Some(pass.to_string());
-            // try authentication
-            self.authenticate(conn_state).await?;
         } else {
             let client = conn_state.user_state.client_name();
             self.feed_msg(&mut conn_state.stream, ErrAlreadyRegistered462 { client })
@@ -689,10 +738,34 @@ impl super::MainState {
         nick: &'a str,
         msg: &'a Message<'a>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        if !conn_state.user_state.authenticated {
+        // Si está en negociación de CAP, simplemente establecer el nick
+        if conn_state.caps_negotation {
             if !self.state.read().await.users.contains_key(nick) {
                 conn_state.user_state.set_nick(nick.to_string());
-                // try authentication
+            } else {
+                let client = conn_state.user_state.client_name();
+                self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick })
+                    .await?;
+            }
+        } else if !conn_state.user_state.authenticated {
+            // No autenticado y no en negociación de CAP
+            if !self.state.read().await.users.contains_key(nick) {
+                // Verificar si el nick está registrado en NickServ
+                #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                {
+                    if let Some(db_arc) = &self.databases.nick_db {
+                        let db = db_arc.read().await;
+                        if db.get_nick_password(nick).await?.is_some() {
+                            // Nick registrado, requerir contraseña
+                            let client = conn_state.user_state.client_name();
+                            self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client })
+                                .await?;
+                            return Ok(());
+                        }
+                    }
+                }
+                // Nick no registrado o sin base de datos, permitir el cambio
+                conn_state.user_state.set_nick(nick.to_string());
                 self.authenticate(conn_state).await?;
             } else {
                 let client = conn_state.user_state.client_name();
@@ -700,42 +773,77 @@ impl super::MainState {
                     .await?;
             }
         } else {
+            // Usuario ya autenticado y no en negociación de CAP
             let mut statem = self.state.write().await;
             let state = statem.deref_mut();
-            let old_nick = conn_state.user_state.nick.as_ref().unwrap().to_string();
-            if nick != old_nick {
-                let nick_str = nick.to_string();
-                // if new nick is not used by other
-                if !state.users.contains_key(&nick_str) {
-                    let old_source = conn_state.user_state.source.clone();
-                    let mut user = state.users.remove(&old_nick).unwrap();
-                    conn_state.user_state.set_nick(nick_str.clone());
-                    user.update_nick(&conn_state.user_state);
-                    for ch in &user.channels {
-                        state
-                            .channels
-                            .get_mut(&ch.clone())
-                            .unwrap()
-                            .rename_user(&old_nick, nick_str.clone());
-                    }
-                    // add nick history
-                    state.insert_to_nick_history(&old_nick, user.history_entry.clone());
-
-                    state.users.insert(nick_str.clone(), user);
-                    // wallops users
-                    if state.wallops_users.contains(&old_nick) {
-                        state.wallops_users.remove(&old_nick);
-                        state.wallops_users.insert(nick_str);
-                    }
-
-                    for u in state.users.values() {
-                        u.send_message(msg, &old_source)?;
-                    }
+            
+            // Si no tiene nick establecido, establecerlo
+            if conn_state.user_state.nick.is_none() {
+                if !state.users.contains_key(nick) {
+                    conn_state.user_state.set_nick(nick.to_string());
+                    // Crear el usuario en el estado global
+                    let user = User::new(
+                        &self.config,
+                        &conn_state.user_state,
+                        conn_state.sender.take().unwrap(),
+                        conn_state.quit_sender.take().unwrap(),
+                    );
+                    state.add_user(nick, user);
                 } else {
-                    // if nick in use
                     let client = conn_state.user_state.client_name();
                     self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick })
                         .await?;
+                }
+            } else {
+                // Cambiar nick existente
+                let old_nick = conn_state.user_state.nick.as_ref().unwrap().to_string();
+                if nick != old_nick {
+                    let nick_str = nick.to_string();
+                    // if new nick is not used by other
+                    if !state.users.contains_key(&nick_str) {
+                        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                        {
+                            if let Some(db_arc) = &self.databases.nick_db {
+                                let db = db_arc.read().await;
+                                if db.get_nick_password(nick).await?.is_some() {
+                                    // Nick registrado, requerir contraseña
+                                    let client = conn_state.user_state.client_name();
+                                    self.feed_msg(&mut conn_state.stream, ErrPasswdMismatch464 { client })
+                                        .await?;
+                                    return Ok(());
+                                }
+                            }
+                        }
+                        let old_source = conn_state.user_state.source.clone();
+                        let mut user = state.users.remove(&old_nick).unwrap();
+                        conn_state.user_state.set_nick(nick_str.clone());
+                        user.update_nick(&conn_state.user_state);
+                        for ch in &user.channels {
+                            state
+                                .channels
+                                .get_mut(&ch.clone())
+                                .unwrap()
+                                .rename_user(&old_nick, nick_str.clone());
+                        }
+                        // add nick history
+                        state.insert_to_nick_history(&old_nick, user.history_entry.clone());
+
+                        state.users.insert(nick_str.clone(), user);
+                        // wallops users
+                        if state.wallops_users.contains(&old_nick) {
+                            state.wallops_users.remove(&old_nick);
+                            state.wallops_users.insert(nick_str);
+                        }
+                        
+                        for u in state.users.values() {
+                            u.send_message(msg, &old_source)?;
+                        }
+                    } else {
+                        // if nick in use
+                        let client = conn_state.user_state.client_name();
+                        self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick })
+                            .await?;
+                    }
                 }
             }
         }

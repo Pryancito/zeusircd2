@@ -360,6 +360,114 @@ impl super::MainState {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
                 }
             }
+            "identify" => {
+                if params.len() < 2 {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Uso: /NS IDENTIFY <nickname> <password>", client)).await?;
+                    return Ok(());
+                }
+
+                let target_nick = params[0];
+                let password = params[1];
+                
+                // Validar el nickname objetivo
+                if let Err(_) = validate_username(target_nick) {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick inválido.", client)).await?;
+                    return Ok(());
+                }
+                
+                if let Some(db_arc) = &self.databases.nick_db {
+                    let db = db_arc.read().await;
+                    if let Some(nick_password) = db.get_nick_password(target_nick).await? {
+                        // Verificar la contraseña
+                        if argon2_verify_password_async(password.to_string(), nick_password).await.is_ok() {
+                            // Contraseña correcta, proceder con el cambio de nick
+                            drop(db); // Liberar el lock de la base de datos
+                            
+                            // Verificar si el nick está en uso y desconectar si es necesario
+                            let user_to_disconnect = {
+                                let state = self.state.read().await;
+                                if state.users.contains_key(target_nick) {
+                                    // El nick está en uso, preparar para desconectar
+                                    Some(target_nick.to_string())
+                                } else {
+                                    None
+                                }
+                            };
+                            
+                            // Desconectar al usuario existente si es necesario
+                            if let Some(existing_nick) = user_to_disconnect {
+                                let mut state = self.state.write().await;
+                                if let Some(user) = state.users.remove(&existing_nick) {
+                                    // Enviar mensaje de desconexión al usuario existente
+                                    if let Some(sender) = user.quit_sender {
+                                        let _ = sender.send((existing_nick.clone(), "NickServ: Nick reclamado".to_string()));
+                                    }
+                                }
+                            }
+                            
+                            // Cambiar el nick del usuario actual
+                            let old_nick = nick.clone();
+                            let old_source = conn_state.user_state.source.clone();
+                            
+                            // Actualizar el nick en el estado del usuario
+                            conn_state.user_state.set_nick(target_nick.to_string());
+                            conn_state.user_state.password = Some(password.to_string());
+                            
+                            // Actualizar en el estado global
+                            let mut state = self.state.write().await;
+                            if let Some(mut user) = state.users.remove(&old_nick) {
+                                user.update_nick(&conn_state.user_state);
+                                
+                                // Actualizar canales
+                                for ch in &user.channels {
+                                    if let Some(channel) = state.channels.get_mut(&ch.clone()) {
+                                        channel.rename_user(&old_nick, target_nick.to_string());
+                                    }
+                                }
+                                
+                                // Actualizar wallops
+                                if state.wallops_users.contains(&old_nick) {
+                                    state.wallops_users.remove(&old_nick);
+                                    state.wallops_users.insert(target_nick.to_string());
+                                }
+                                
+                                // Agregar a la historia
+                                state.insert_to_nick_history(&old_nick, user.history_entry.clone());
+                                
+                                // Insertar con el nuevo nick
+                                state.users.insert(target_nick.to_string(), user);
+                            }
+                            
+                            // Obtener el nuevo client_name después de las modificaciones
+                            let new_client = conn_state.user_state.client_name();
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Te has identificado exitosamente como {}.", new_client, target_nick)).await?;
+                            
+                            // Notificar a todos los usuarios sobre el cambio de nick
+                            let nick_change_msg = format!("NICK :{}", target_nick);
+                            for u in state.users.values() {
+                                let _ = u.send_msg_display(&old_source, nick_change_msg.clone());
+                            }
+                            
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Contraseña incorrecta.", client)).await?;
+                        }
+                    } else {
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick {} no está registrado.", client, target_nick)).await?;
+                    }
+                } else {
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                }
+            }
+            "help" => {
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Comandos disponibles:", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  REGISTER <password> - Registrar tu nick", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  IDENTIFY <nickname> <password> - Identificarte con un nick registrado", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  DROP <password> - Eliminar tu nick", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  PASSWORD <new_password> - Cambiar contraseña", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  EMAIL <email> - Configurar email", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  URL <url> - Configurar URL", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  VHOST <vhost> - Configurar vhost", client)).await?;
+            }
             _ => {
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Comando desconocido. Usa /NS HELP.", client)).await?;
             }

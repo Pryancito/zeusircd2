@@ -502,6 +502,9 @@ pub(crate) enum Reply<'a> {
     ErrCannotDoCommand972 {
         client: &'a str,
     },
+    ErrNickRegistered465 {
+        client: &'a str,
+    },
 }
 
 use Reply::*;
@@ -1185,6 +1188,9 @@ impl<'a> fmt::Display for Reply<'a> {
             }
             ErrCannotDoCommand972 { client } => {
                 write!(f, "972 {} :Can not do command", client)
+            }
+            ErrNickRegistered465 { client } => {
+                write!(f, "465 {} :Nick registrado. Usa /NS IDENTIFY <nickname> <password> o /PASS <password>", client)
             }
         }
     }
@@ -2277,6 +2283,10 @@ mod test {
         assert_eq!(
             "972 <client> :Can not do command",
             format!("{}", ErrCannotDoCommand972 { client: "<client>" })
+        );
+        assert_eq!(
+            "465 <client> :Nick registrado. Usa /NS IDENTIFY <nickname> <password> o /PASS <password>",
+            format!("{}", ErrNickRegistered465 { client: "<client>" })
         );
     }
 }
