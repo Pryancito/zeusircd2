@@ -396,10 +396,9 @@ impl super::MainState {
             let nicks: Vec<_> = nicks.iter().map(|x| x.to_string()).collect();
             for nick in &nicks {
                 // Buscar el usuario ignorando mayúsculas/minúsculas
-                let arg_user = match state.users.iter()
-                    .find(|(k, _)| k.eq_ignore_ascii_case(nick))
-                    .map(|(_, v)| v) {
-                    Some(u) => u,
+                let (real_nick, arg_user) = match state.users.iter()
+                    .find(|(k, _)| k.eq_ignore_ascii_case(nick)) {
+                    Some((k, v)) => (k.clone(), v),
                     None => {
                         self.feed_msg(
                             &mut conn_state.stream,
@@ -462,7 +461,7 @@ impl super::MainState {
                 for chan in &arg_user.channels {
                     if let Some(channel) = state.channels.get(chan) {
                         let mut prefix = None;
-                        if let Some(chum) = channel.users.get(nick) {
+                        if let Some(chum) = channel.users.get(&real_nick) {
                             let p = chum.to_string(&conn_state.caps);
                             if !p.is_empty() {
                                 prefix = Some(p);
@@ -496,7 +495,7 @@ impl super::MainState {
                     )
                     .await?;
                 }
-                if user.modes.is_local_oper() || client == nick {
+                if user.modes.is_local_oper() || client == real_nick {
                     self.feed_msg(
                         &mut conn_state.stream,
                         RplWhoIsHost378 {

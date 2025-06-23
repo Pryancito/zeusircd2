@@ -485,7 +485,8 @@ impl super::MainState {
                                     conn_state.user_state.update_source();
                                 }
                                 user.update_nick(&conn_state.user_state);
-                                
+                                let old_reg = user.modes.registered;
+                                user.modes.registered = true;
                                 // Actualizar canales
                                 for ch in &user.channels {
                                     if let Some(channel) = state.channels.get_mut(&ch.clone()) {
@@ -505,7 +506,7 @@ impl super::MainState {
                                 // Insertar con el nuevo nick
                                 state.users.insert(target_nick.to_string(), user.clone());
 
-                                if user.modes.registered {
+                                if old_reg {
                                     for channel in &user.channels {
                                         // Obtener todos los datos necesarios en un solo préstamo
                                         let (nicks, user_modes) = {
@@ -573,6 +574,7 @@ impl super::MainState {
                                     }
                                 }
                             }
+                            
                             // Obtener el nuevo client_name después de las modificaciones
                             let new_client = conn_state.user_state.client_name();
                             self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Te has identificado exitosamente como {}.", new_client, target_nick)).await?;

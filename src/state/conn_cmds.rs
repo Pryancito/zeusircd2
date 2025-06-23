@@ -159,9 +159,16 @@ impl super::MainState {
         _: Option<u32>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         match subcommand {
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
             CapCommand::LS => {
                 conn_state.caps_negotation = true;
                 self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix sasl message-tags batch labeled-response chathistory read-marker echo-message setname userhost-in-names invite-notify monitor watch")
+                    .await
+            }
+            #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+            CapCommand::LS => {
+                conn_state.caps_negotation = true;
+                self.feed_msg(&mut conn_state.stream, "CAP * LS :multi-prefix message-tags batch labeled-response chathistory read-marker echo-message setname userhost-in-names invite-notify monitor watch")
                     .await
             }
             CapCommand::LIST => {
@@ -414,12 +421,20 @@ impl super::MainState {
                     let user_state = &mut conn_state.user_state;
                     user_state.registered = registered;
                     let mut state = self.state.write().await;
-                    let mut user = User::new(
-                        &self.config,
-                        user_state,
-                        conn_state.sender.take().unwrap(),
-                        conn_state.quit_sender.take().unwrap(),
-                    );
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                        let mut user = User::new(
+                            &self.config,
+                            user_state,
+                            conn_state.sender.take().unwrap(),
+                            conn_state.quit_sender.take().unwrap(),
+                        );
+                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                        let user = User::new(
+                            &self.config,
+                            user_state,
+                            conn_state.sender.take().unwrap(),
+                            conn_state.quit_sender.take().unwrap(),
+                        );
                     // Aplicar vhost si está configurado
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     {
@@ -881,6 +896,7 @@ impl super::MainState {
                                 }
                             }
                         }
+                        user.modes.registered = false;
                         for ch in &user.channels {
                             state
                                 .channels
