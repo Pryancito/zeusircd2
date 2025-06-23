@@ -475,14 +475,14 @@ impl super::MainState {
                             // Actualizar el nick en el estado del usuario
                             conn_state.user_state.set_nick(target_nick.to_string());
                             conn_state.user_state.password = Some(password.to_string());
-
-                            if vhost.is_some() {
-                                conn_state.user_state.set_cloack(vhost.clone().expect("ERROR.in.vHost"));
-                            }
                             
                             // Actualizar en el estado global
                             let mut state = self.state.write().await;
                             if let Some(mut user) = state.users.remove(&old_nick) {
+                                if vhost.is_some() {
+                                    conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
+                                    user.cloack = vhost.clone().expect("ERROR.in.vHost");
+                                }
                                 user.update_nick(&conn_state.user_state);
                                 
                                 // Actualizar canales

@@ -1299,6 +1299,7 @@ impl super::MainState {
                                 if !user.modes.cloacked {
                                     set_modes_string.push('x');
                                     user.modes.cloacked = true;
+                                    user.cloack = user.get_display_hostname(&self.config.cloack);
                                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                                     {
                                         if let Some(db_arc) = &self.databases.nick_db {
@@ -1310,8 +1311,6 @@ impl super::MainState {
                                                     user.cloack = user.get_display_hostname(&self.config.cloack);
                                                 }
                                             }
-                                        } else {
-                                            user.cloack = user.get_display_hostname(&self.config.cloack);
                                         }
                                     }
                                 }

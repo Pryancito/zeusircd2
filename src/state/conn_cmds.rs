@@ -833,6 +833,11 @@ impl super::MainState {
                         let mut user = state.users.remove(&old_nick).unwrap();
                         conn_state.user_state.set_nick(nick_str.clone());
                         user.update_nick(&conn_state.user_state);
+                        user.source = format!("{}!{}@{}",
+                            nick_str, user.name, user.get_display_hostname(&self.config.cloack));
+                        conn_state.user_state.source = user.source.clone();
+                        user.cloack = user.get_display_hostname(&self.config.cloack);
+                        conn_state.user_state.cloack = user.cloack.clone();
                         for ch in &user.channels {
                             state
                                 .channels
