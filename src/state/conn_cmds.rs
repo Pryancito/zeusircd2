@@ -766,7 +766,7 @@ impl super::MainState {
         &self,
         conn_state: &mut ConnState,
         nick: &'a str,
-        msg: &'a Message<'a>,
+        _msg: &'a Message<'a>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Si está en negociación de CAP, simplemente establecer el nick
         if conn_state.caps_negotation {
@@ -911,9 +911,9 @@ impl super::MainState {
                             state.wallops_users.remove(&old_nick);
                             state.wallops_users.insert(nick_str);
                         }
-                        
+                        let nick_change_msg = format!("NICK :{}", nick);
                         for u in state.users.values() {
-                            u.send_message(msg, &old_source)?;
+                            let _ = u.send_msg_display(&old_source, nick_change_msg.clone());
                         }
                     } else {
                         // if nick in use
