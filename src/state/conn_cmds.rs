@@ -848,9 +848,9 @@ impl super::MainState {
                         let mut user = state.users.remove(&old_nick).unwrap();
                         conn_state.user_state.set_nick(nick_str.clone());
                         user.update_nick(&conn_state.user_state);
-                        conn_state.user_state.source = user.source.clone();
+                        conn_state.user_state.cloack = user.get_display_hostname(&self.config.cloack);
                         user.cloack = user.get_display_hostname(&self.config.cloack);
-                        conn_state.user_state.cloack = user.cloack.clone();
+                        conn_state.user_state.update_source();
                         if user.modes.registered {
                             for channel in &user.channels {
                                 if let Some(chanobj) = state.channels.get_mut(&channel.clone()) {
@@ -867,7 +867,7 @@ impl super::MainState {
                                                 &conn_state.user_state.source,
                                                 join_msg.as_str()
                                             );
-                                            if let Some(user_chum) = chanobj.users.get(&nicknames.to_string()) {
+                                            if let Some(user_chum) = chanobj.users.get(&old_nick.to_string()) {
                                                 let mut arg = Vec::new();
                                                 if user_chum.founder {
                                                     arg.push("q");
