@@ -482,6 +482,7 @@ impl super::MainState {
                                 if vhost.is_some() {
                                     conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
                                     user.cloack = vhost.clone().expect("ERROR.in.vHost");
+                                    conn_state.user_state.update_source();
                                 }
                                 user.update_nick(&conn_state.user_state);
                                 
@@ -502,9 +503,76 @@ impl super::MainState {
                                 state.insert_to_nick_history(&old_nick, user.history_entry.clone());
                                 
                                 // Insertar con el nuevo nick
-                                state.users.insert(target_nick.to_string(), user);
+                                state.users.insert(target_nick.to_string(), user.clone());
+
+                                if user.modes.registered {
+                                    for channel in &user.channels {
+                                        // Obtener todos los datos necesarios en un solo préstamo
+                                        let (nicks, user_modes) = {
+                                            if let Some(chanobj) = state.channels.get(&channel.clone()) {
+                                                let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                                let user_modes: Vec<(String, Vec<String>)> = nicks.iter().map(|nick| {
+                                                    let user_chum = chanobj.users.get(nick).unwrap();
+                                                    let mut modes = Vec::new();
+                                                    if user_chum.founder {
+                                                        modes.push("q".to_string());
+                                                    }
+                                                    if user_chum.protected {
+                                                        modes.push("a".to_string());
+                                                    }
+                                                    if user_chum.operator {
+                                                        modes.push("o".to_string());
+                                                    }
+                                                    if user_chum.half_oper {
+                                                        modes.push("h".to_string());
+                                                    }
+                                                    if user_chum.voice {
+                                                        modes.push("v".to_string());
+                                                    }
+                                                    (nick.clone(), modes)
+                                                }).collect();
+                                                (nicks, user_modes)
+                                            } else {
+                                                (Vec::new(), Vec::new())
+                                            }
+                                        };
+
+                                        // Enviar mensajes PART y JOIN
+                                        for nick in &nicks {
+                                            if nick != target_nick {
+                                                if let Some(user) = state.users.get_mut(nick) {
+                                                    let part_msg = format!("PART {} :vHost", channel);
+                                                    let _ = user.send_msg_display(
+                                                        &old_source,
+                                                        part_msg.as_str()
+                                                    );
+                                                    let join_msg = format!("JOIN :{}", channel);
+                                                    let _ = user.send_msg_display(
+                                                        &conn_state.user_state.source,
+                                                        join_msg.as_str()
+                                                    );
+                                                }
+                                            }
+                                        }
+
+                                        // Enviar los modos
+                                        for (nick, modes) in user_modes {
+                                            for mode in &modes {
+                                                if let Some(user) = state.users.get_mut(&nick) {
+                                                    if nick != target_nick {
+                                                        let msg = format!("MODE {} +{} {}",
+                                                            channel, mode, target_nick);
+                                                        let _ = user.send_msg_display(
+                                                            &self.config.name,
+                                                            msg.as_str(),
+                                                            );
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            
                             // Obtener el nuevo client_name después de las modificaciones
                             let new_client = conn_state.user_state.client_name();
                             self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Te has identificado exitosamente como {}.", new_client, target_nick)).await?;

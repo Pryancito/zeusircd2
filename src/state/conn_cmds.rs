@@ -838,6 +838,49 @@ impl super::MainState {
                         conn_state.user_state.source = user.source.clone();
                         user.cloack = user.get_display_hostname(&self.config.cloack);
                         conn_state.user_state.cloack = user.cloack.clone();
+                        if user.modes.registered {
+                            for channel in &user.channels {
+                                if let Some(chanobj) = state.channels.get_mut(&channel.clone()) {
+                                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                    for nicknames in nicks {
+                                        if let Some(user) = state.users.get_mut(&nicknames.to_string()) {
+                                            let part_msg = format!("PART {} :vHost", channel);
+                                            let _ = user.send_msg_display(
+                                                &old_source,
+                                                part_msg.as_str()
+                                            );
+                                            let join_msg = format!("JOIN :{}", channel);
+                                            let _ = user.send_msg_display(
+                                                &conn_state.user_state.source,
+                                                join_msg.as_str()
+                                            );
+                                            if let Some(user_chum) = chanobj.users.get(&nicknames.to_string()) {
+                                                let mut arg = Vec::new();
+                                                if user_chum.founder {
+                                                    arg.push("q");
+                                                } if user_chum.protected {
+                                                    arg.push("a");
+                                                } if user_chum.operator {
+                                                    arg.push("o");
+                                                } if user_chum.half_oper {
+                                                    arg.push("h");
+                                                } if user_chum.voice {
+                                                    arg.push("v");
+                                                }
+                                                for mode in &arg {
+                                                    let msg = format!("MODE {} +{} {}",
+                                                        channel, mode, nick_str);
+                                                    let _ = user.send_msg_display(
+                                                        &self.config.name,
+                                                        msg.as_str(),
+                                                    );
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                         for ch in &user.channels {
                             state
                                 .channels
