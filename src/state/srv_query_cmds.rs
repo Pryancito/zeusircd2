@@ -1135,7 +1135,7 @@ impl super::MainState {
                     users
                         .get(unick)
                         .unwrap()
-                        .send_msg_user(mode_string.clone())?;
+                        .send_msg_display(&self.config.name, mode_string.as_str())?;
                 }
             }
         } // if modes.len() == 0

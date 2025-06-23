@@ -848,8 +848,6 @@ impl super::MainState {
                         let mut user = state.users.remove(&old_nick).unwrap();
                         conn_state.user_state.set_nick(nick_str.clone());
                         user.update_nick(&conn_state.user_state);
-                        user.source = format!("{}!{}@{}",
-                            nick_str, user.name, user.get_display_hostname(&self.config.cloack));
                         conn_state.user_state.source = user.source.clone();
                         user.cloack = user.get_display_hostname(&self.config.cloack);
                         conn_state.user_state.cloack = user.cloack.clone();
@@ -1047,15 +1045,15 @@ impl super::MainState {
             };
             conn_state.user_state.quit_reason = "Client Quit".to_string();
             // notify other users in channels
+            let source = &conn_state.user_state.source;
+            let quit_msg = format!("QUIT :{}", conn_state.user_state.quit_reason);
             for chname in &user_channels {
                 let state = self.state.read().await;
                 if let Some(channel) = state.channels.get(chname) {
                     for (other_nick, _) in &channel.users {
                         if other_nick != nick {
                             if let Some(other_user) = state.users.get(other_nick) {
-                                let _ = other_user.send_msg_user(
-                                    format!("QUIT :{}", conn_state.user_state.quit_reason),
-                                );
+                                let _ = other_user.send_msg_display(source, quit_msg.clone());
                             }
                         }
                     }
