@@ -1180,7 +1180,7 @@ impl<'a> Command<'a> {
             NICKSERV { subcommand, .. } => {
                 match subcommand.to_lowercase().as_str() {
                     "register" | "drop" | "email" | "url" | "noaccess" | "noop" | 
-                    "showmail" | "password" | "vhost" | "identify" | "help" => Ok(()),
+                    "showmail" | "password" | "vhost" | "identify" | "help" | "info" => Ok(()),
                     _ => Err(UnknownSubcommand(NICKSERVId, subcommand.to_string()))
                 }
             }
@@ -1188,7 +1188,7 @@ impl<'a> Command<'a> {
             NS { subcommand, .. } => {
                 match subcommand.to_lowercase().as_str() {
                     "register" | "drop" | "email" | "url" | "noaccess" | "noop" | 
-                    "showmail" | "password" | "vhost" | "identify" | "help" => Ok(()),
+                    "showmail" | "password" | "vhost" | "identify" | "help" | "info" => Ok(()),
                     _ => Err(UnknownSubcommand(NSId, subcommand.to_string()))
                 }
             }

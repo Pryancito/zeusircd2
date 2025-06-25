@@ -572,6 +572,63 @@ impl super::MainState {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
                 }
             }
+            "info" => {
+                if let Some(db_arc) = &self.databases.nick_db {
+                    let db = db_arc.read().await;
+                    if let Some((user, registration_date, email, url, vhost, last_vhost, noaccess, noop, showmail)) = db.get_nick_info(nick).await? {
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Información del nick: {}", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usuario: {}", client, user)).await?;
+                        if let Some(vhost) = &vhost {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Vhost: {}", client, vhost)).await?;
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Vhost: No configurado", client)).await?;
+                        }
+                        if let Some(last_vhost) = &last_vhost {
+                            if let Ok(duration) = SystemTime::now().duration_since(*last_vhost) {
+                                let days = duration.as_secs() / 86400;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Último cambio de vhost: {} días", client, days)).await?;
+                            }
+                        }
+                        if showmail {
+                            if let Some(email) = &email {
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: {}", client, email)).await?;
+                            } else {
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: No configurado", client)).await?;
+                            }
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: No mostrado", client)).await?;
+                        }
+                        if let Some(url) = &url {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :URL: {}", client, url)).await?;
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :URL: No configurada", client)).await?;
+                        }
+                        if let Ok(duration) = SystemTime::now().duration_since(registration_date) {
+                            let days = duration.as_secs() / 86400;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Registrado hace {} días", client, days)).await?;
+                        }
+                        if noaccess {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No access: Activado", client)).await?;
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No access: Desactivado", client)).await?;
+                        }
+                        if noop { 
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No op: Activado", client)).await?;
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No op: Desactivado", client)).await?;
+                        }
+                        if showmail {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Showmail: Activado", client)).await?;  
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Showmail: Desactivado", client)).await?;
+                        }
+                    } else {
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :El nick {} no está registrado.", client, nick)).await?;
+                    }
+                } else {    
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                }
+            }
             "help" => {
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Comandos disponibles:", client)).await?;
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  REGISTER <password> - Registrar tu nick", client)).await?;
