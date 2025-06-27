@@ -753,10 +753,10 @@ async fn handle_websocket_connection(
             acceptor.set_certificate_chain_file(&tlsconfig.cert_file)?;
             let acceptor = Arc::new(acceptor.build());
             
-            let ssl = Ssl::new(acceptor.context())?;
-            let mut tls_stream = SslStream::new(ssl, stream)?;
+            let ssl = Ssl::new(acceptor.context()).map_err(|e| e.to_string())?;
+            let mut tls_stream = SslStream::new(ssl, stream).map_err(|e| e.to_string())?;
             use std::pin::Pin;
-            Pin::new(&mut tls_stream).accept().await?;
+            Pin::new(&mut tls_stream).accept().await.map_err(|e| e.to_string())?;
             
             // Configurar el handshake con los protocolos soportados
             let ws_stream = tokio_tungstenite::accept_async(tls_stream).await?;
