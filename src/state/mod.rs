@@ -759,13 +759,23 @@ async fn handle_websocket_connection(
             Pin::new(&mut tls_stream).accept().await.map_err(|e| e.to_string())?;
             
             // Configurar el handshake con los protocolos soportados
-            let ws_stream = tokio_tungstenite::accept_async(tls_stream).await?;
-            return Ok(DualTcpStream::SecureWebSocketStream(ws_stream));
+            return match tokio_tungstenite::accept_async(tls_stream).await {
+                Ok(wss_stream) => Ok(DualTcpStream::SecureWebSocketStream(wss_stream)),
+                Err(e) => {
+                    error!("Error en handshake SecureWebSocket: {:?}", e);
+                    Err(e.into())
+                }
+            };
         }
     }
     // Configurar el handshake con los protocolos soportados
-    let ws_stream = tokio_tungstenite::accept_async(stream).await?;
-    Ok(DualTcpStream::WebSocketStream(ws_stream))
+    match tokio_tungstenite::accept_async(stream).await {
+        Ok(ws_stream) => Ok(DualTcpStream::WebSocketStream(ws_stream)),
+        Err(e) => {
+            error!("Error en handshake WebSocket: {:?}", e);
+            Err(e.into())
+        }
+    }
 }
 
 // main routine to run server

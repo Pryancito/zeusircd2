@@ -88,6 +88,7 @@ impl User {
             history_entry: NickHistoryEntry {
                 username: user_state.name.as_ref().cloned().unwrap_or_default(),
                 hostname: user_state.hostname.clone(),
+                cloack: user_state.hostname.clone(),
                 realname: user_state.realname.as_ref().cloned().unwrap_or_default(),
                 signon: now_ts,
             },
@@ -98,6 +99,7 @@ impl User {
         // Si el modo cloacked está activo por defecto, actualizar el campo cloack
         if user.modes.cloacked {
             user.cloack = user.get_display_hostname(&config.cloack);
+            user.history_entry.cloack = user.cloack.clone();
         }
 
         user
@@ -674,6 +676,7 @@ impl Channel {
 pub(super) struct NickHistoryEntry {
     pub(super) username: String,
     pub(super) hostname: String,
+    pub(super) cloack: String,
     pub(super) realname: String,
     pub(super) signon: u64,
 }
@@ -1282,6 +1285,7 @@ mod test {
             NickHistoryEntry {
                 username: user.name.clone(),
                 hostname: user.hostname.clone(),
+                cloack: user.cloack.clone(),
                 realname: user.realname.clone(),
                 signon: user.signon
             },
@@ -1969,6 +1973,7 @@ mod test {
             NickHistoryEntry {
                 username: "mati1".to_string(),
                 hostname: "gugg.com".to_string(),
+                cloack: "gugg.com".to_string(),
                 realname: "Mati1".to_string(),
                 signon: 12344555555,
             },
@@ -1978,6 +1983,7 @@ mod test {
             NickHistoryEntry {
                 username: "mati2".to_string(),
                 hostname: "bip.com".to_string(),
+                cloack: "bip.com".to_string(),
                 realname: "Mati2".to_string(),
                 signon: 12377411100,
             },
@@ -1989,12 +1995,14 @@ mod test {
                     NickHistoryEntry {
                         username: "mati1".to_string(),
                         hostname: "gugg.com".to_string(),
+                        cloack: "gugg.com".to_string(),
                         realname: "Mati1".to_string(),
                         signon: 12344555555
                     },
                     NickHistoryEntry {
                         username: "mati2".to_string(),
                         hostname: "bip.com".to_string(),
+                        cloack: "bip.com".to_string(),
                         realname: "Mati2".to_string(),
                         signon: 12377411100
                     }

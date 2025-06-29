@@ -608,7 +608,7 @@ impl super::MainState {
                             client,
                             nick: nickname,
                             username: &entry.username,
-                            host: &entry.hostname,
+                            host: &entry.cloack,
                             realname: &entry.realname,
                         },
                     )
