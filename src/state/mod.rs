@@ -49,6 +49,7 @@ use crate::database::mysql::mysql_impl::{MysqlNickDatabase, MysqlChannelDatabase
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
 use crate::database::{NickDatabase, ChannelDatabase};
 use serde::ser::StdError;
+use tokio::time::{timeout, Duration};
 
 use crate::command::*;
 use crate::config::*;
@@ -759,8 +760,8 @@ async fn handle_websocket_connection(
             Pin::new(&mut tls_stream).accept().await.map_err(|e| e.to_string())?;
             
             // Configurar el handshake con los protocolos soportados
-            return match tokio_tungstenite::accept_async(tls_stream).await {
-                Ok(wss_stream) => Ok(DualTcpStream::SecureWebSocketStream(wss_stream)),
+            return match timeout(Duration::from_secs(10), tokio_tungstenite::accept_async(tls_stream)).await {
+                Ok(wss_stream) => Ok(DualTcpStream::SecureWebSocketStream(wss_stream?)),
                 Err(e) => {
                     error!("Error en handshake SecureWebSocket: {:?}", e);
                     Err(e.into())
@@ -769,8 +770,8 @@ async fn handle_websocket_connection(
         }
     }
     // Configurar el handshake con los protocolos soportados
-    match tokio_tungstenite::accept_async(stream).await {
-        Ok(ws_stream) => Ok(DualTcpStream::WebSocketStream(ws_stream)),
+    match timeout(Duration::from_secs(10), tokio_tungstenite::accept_async(stream)).await {
+        Ok(ws_stream) => Ok(DualTcpStream::WebSocketStream(ws_stream?)),
         Err(e) => {
             error!("Error en handshake WebSocket: {:?}", e);
             Err(e.into())
