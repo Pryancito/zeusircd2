@@ -117,7 +117,11 @@ impl super::MainState {
                         if let Some(chanobj) = state.channels.get(channel) {
                             let modes = chanobj.modes.to_string();
                             if !modes.is_empty() {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos: {}", client, modes)).await?;
+                                let modos_str = match &info.3 {
+                                    Some(modos) if !modos.is_empty() => modos.as_str(),
+                                    _ => "Sin modos especiales",
+                                };
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos: {}", client, modos_str)).await?;
                             } else {
                                 self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos: Sin modos especiales", client)).await?;
                             }
@@ -362,11 +366,24 @@ impl super::MainState {
                 }
             } "mlock" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS MLOCK <canal> [+modos|-modos]", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS MLOCK <canal> [+modos|-modos|off] [argumentos]", client)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
-                let modes = params[1];
+                let args = params[1..].join(" ");
+                let modo_str = args.split_whitespace().next().unwrap_or("");
+                if modo_str.is_empty() {
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Debes especificar los modos para MLOCK o 'off' para desactivarlo.", client)).await?;
+                    return Ok(());
+                }
+
+                // Permitir desactivar el mlock con "off"
+                let desactivar = modo_str.eq_ignore_ascii_case("off");
+
+                if !desactivar && !self.validate_mlock_modes(modo_str) {
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos inválidos para mlock. Modos permitidos: +ntklmi", client)).await?;
+                    return Ok(());
+                }
                 
                 // Verificar que el canal existe
                 if let Some(db_arc) = &self.databases.chan_db {
@@ -394,17 +411,32 @@ impl super::MainState {
                             return Ok(());
                         }
                         
-                        // Validar que los modos son válidos para mlock
-                        if !self.validate_mlock_modes(modes) {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos inválidos para mlock. Modos permitidos: +ntklmi", client)).await?;
-                            return Ok(());
+                        // Si se solicita desactivar el mlock
+                        if desactivar {
+                            db.update_channel_info(channel, None, Some("")).await?;
+                            // Limpiar modos mlock en la lógica interna si el canal existe
+                            let mut state = self.state.write().await;
+                            if let Some(chanobj) = state.channels.get_mut(channel) {
+                                // Limpiar los modos mlock (solo los modos permitidos por mlock)
+                                self.apply_stored_modes(&mut chanobj.modes, "");
+                            }
+                            drop(state);
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock del canal '{}' ha sido desactivado.", client, channel)).await?;
+                        } else {
+                            // Actualizar el mlock en la base de datos
+                            db.update_channel_info(channel, None, Some(&modo_str)).await?;
+                            
+                            // Aplicar los modos al canal si existe
+                            let mut state = self.state.write().await;
+                            if let Some(chanobj) = state.channels.get_mut(channel) {
+                                // Limpiar modos anteriores y aplicar los nuevos
+                                self.apply_stored_modes(&mut chanobj.modes, &args);
+                            }
+                            drop(state);
+                            
+                            // Notificar el cambio
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock del canal '{}' establecido a: {}", client, channel, args)).await?;
                         }
-                        
-                        // Actualizar el mlock en la base de datos
-                        db.update_channel_info(channel, None, Some(modes)).await?;
-                        
-                        // Notificar el cambio
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock del canal '{}' establecido a: {}", client, channel, modes)).await?;
                         
                     } else {
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error al obtener información del canal '{}'.", client, channel)).await?;
@@ -442,6 +474,121 @@ impl super::MainState {
         }
         
         true
+    }
+
+    /// Aplica los modos almacenados al canal
+    pub(super) fn apply_stored_modes(&self, channel_modes: &mut crate::config::ChannelModes, modes_str: &str) {
+        // Parsear los modos almacenados y aplicarlos al canal
+        // Los modos se almacenan como string (ej: "+ntk clave123")
+        let mut chars = modes_str.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            match ch {
+                '+' => {
+                    // Procesar modos positivos
+                    while let Some(&mode) = chars.peek() {
+                        match mode {
+                            'i' => {
+                                channel_modes.invite_only = true;
+                                chars.next();
+                            }
+                            'm' => {
+                                channel_modes.moderated = true;
+                                chars.next();
+                            }
+                            's' => {
+                                channel_modes.secret = true;
+                                chars.next();
+                            }
+                            't' => {
+                                channel_modes.protected_topic = true;
+                                chars.next();
+                            }
+                            'n' => {
+                                channel_modes.no_external_messages = true;
+                                chars.next();
+                            }
+                            'k' => {
+                                chars.next(); // Consumir 'k'
+                                // Buscar la clave después del espacio
+                                let mut key = String::new();
+                                while let Some(&next_ch) = chars.peek() {
+                                    if next_ch.is_whitespace() {
+                                        chars.next();
+                                        break;
+                                    }
+                                    key.push(chars.next().unwrap());
+                                }
+                                if !key.is_empty() {
+                                    channel_modes.key = Some(key);
+                                }
+                            }
+                            'l' => {
+                                chars.next(); // Consumir 'l'
+                                // Buscar el límite después del espacio
+                                let mut limit_str = String::new();
+                                while let Some(&next_ch) = chars.peek() {
+                                    if next_ch.is_whitespace() {
+                                        chars.next();
+                                        break;
+                                    }
+                                    limit_str.push(chars.next().unwrap());
+                                }
+                                if let Ok(limit) = limit_str.parse::<usize>() {
+                                    channel_modes.client_limit = Some(limit);
+                                }
+                            }
+                            _ => {
+                                // Modo desconocido, saltarlo
+                                chars.next();
+                            }
+                        }
+                    }
+                }
+                '-' => {
+                    // Procesar modos negativos
+                    while let Some(&mode) = chars.peek() {
+                        match mode {
+                            'i' => {
+                                channel_modes.invite_only = false;
+                                chars.next();
+                            }
+                            'm' => {
+                                channel_modes.moderated = false;
+                                chars.next();
+                            }
+                            's' => {
+                                channel_modes.secret = false;
+                                chars.next();
+                            }
+                            't' => {
+                                channel_modes.protected_topic = false;
+                                chars.next();
+                            }
+                            'n' => {
+                                channel_modes.no_external_messages = false;
+                                chars.next();
+                            }
+                            'k' => {
+                                channel_modes.key = None;
+                                chars.next();
+                            }
+                            'l' => {
+                                channel_modes.client_limit = None;
+                                chars.next();
+                            }
+                            _ => {
+                                // Modo desconocido, saltarlo
+                                chars.next();
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Carácter no reconocido, continuar
+                }
+            }
+        }
     }
 }
 

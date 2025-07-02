@@ -1195,14 +1195,14 @@ impl<'a> Command<'a> {
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             CHANSERV { subcommand, .. } => {
                 match subcommand.to_lowercase().as_str() {
-                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer" => Ok(()),
+                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer" | "mlock" | "info" => Ok(()),
                     _ => Err(UnknownSubcommand(CHANSERVId, subcommand.to_string()))
                 }
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             CS { subcommand, .. } => {
                 match subcommand.to_lowercase().as_str() {
-                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer"=> Ok(()),
+                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer" | "mlock" | "info" => Ok(()),
                     _ => Err(UnknownSubcommand(CSId, subcommand.to_string()))
                 }
             }

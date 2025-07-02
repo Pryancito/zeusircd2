@@ -97,10 +97,29 @@ impl super::MainState {
                         let do_join = {
                             if let Some(db_arc) = &self.databases.chan_db {
                                 if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
-                                    // Verificar si hay modos almacenados con clave
+                                    // Verificar si hay modos almacenados con clave o modo +i
                                     if let Some(modes_str) = &channel_info.3 {
-                                        if modes_str.contains("+k") {
-                                            // El canal registrado tiene modo +k, verificar clave
+                                        // Primero, verificar modo +i (invite-only)
+                                        if modes_str.contains("i") {
+                                            // Si el usuario no está invitado ni tiene excepción, rechazar
+                                            let invitado = user.invited_to.contains(&chname)
+                                                || channel.modes.invite_exception.as_ref().map_or(false, |e| {
+                                                    e.iter().any(|e| match_wildcard(e, &conn_state.user_state.source))
+                                                });
+                                            if !invitado {
+                                                self.feed_msg(
+                                                    &mut conn_state.stream,
+                                                    ErrInviteOnlyChan473 {
+                                                        client,
+                                                        channel: chname_str,
+                                                    },
+                                                )
+                                                .await?;
+                                                return Ok(()); // No permitir join, saltar al siguiente canal
+                                            }
+                                        }
+                                        // Luego, verificar modo +k (clave)
+                                        if modes_str.contains("k") {
                                             if let Some(ref keys) = keys_opt {
                                                 // Extraer la clave del string de modos
                                                 if let Some(key) = self.extract_key_from_modes(modes_str) {
@@ -113,7 +132,7 @@ impl super::MainState {
                                                             },
                                                         )
                                                         .await?;
-                                                        false
+                                                        return Ok(());
                                                     } else {
                                                         true
                                                     }
@@ -228,7 +247,65 @@ impl super::MainState {
                     }
                 } else {
                     // if new channel
-                    (true, true)
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    {
+                        let mut permitido = true;
+                        if let Some(db_arc) = &self.databases.chan_db {
+                            if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
+                                if let Some(modes_str) = &channel_info.3 {
+                                    // Verificar +i (invite-only)
+                                    if modes_str.contains("i") {
+                                        let invitado = user.invited_to.contains(&chname);
+                                        if !invitado {
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                ErrInviteOnlyChan473 {
+                                                    client,
+                                                    channel: chname_str,
+                                                },
+                                            ).await?;
+                                            permitido = false;
+                                        }
+                                    }
+                                    // Verificar +k (clave)
+                                    if modes_str.contains("k") {
+                                        if let Some(ref keys) = keys_opt {
+                                            if let Some(key) = self.extract_key_from_modes(modes_str) {
+                                                if key != keys[i] {
+                                                    self.feed_msg(
+                                                        &mut conn_state.stream,
+                                                        ErrBadChannelKey475 {
+                                                            client,
+                                                            channel: chname_str,
+                                                        },
+                                                    ).await?;
+                                                    permitido = false;
+                                                }
+                                            }
+                                        } else {
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                ErrBadChannelKey475 {
+                                                    client,
+                                                    channel: chname_str,
+                                                },
+                                            ).await?;
+                                            permitido = false;
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        if permitido {
+                            (true, true)
+                        } else {
+                            (false, false)
+                        }
+                    }
+                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                    {
+                        (true, true)
+                    }
                 };
 
                 // check whether user is not in max channels
@@ -554,122 +631,6 @@ impl super::MainState {
             }
         }
         None
-    }
-
-    // Función helper para aplicar modos almacenados en ChanServ
-    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-    fn apply_stored_modes(&self, channel_modes: &mut ChannelModes, modes_str: &str) {
-        // Parsear los modos almacenados y aplicarlos al canal
-        // Los modos se almacenan como string (ej: "+ntk clave123")
-        let mut chars = modes_str.chars().peekable();
-        
-        while let Some(ch) = chars.next() {
-            match ch {
-                '+' => {
-                    // Procesar modos positivos
-                    while let Some(&mode) = chars.peek() {
-                        match mode {
-                            'i' => {
-                                channel_modes.invite_only = true;
-                                chars.next();
-                            }
-                            'm' => {
-                                channel_modes.moderated = true;
-                                chars.next();
-                            }
-                            's' => {
-                                channel_modes.secret = true;
-                                chars.next();
-                            }
-                            't' => {
-                                channel_modes.protected_topic = true;
-                                chars.next();
-                            }
-                            'n' => {
-                                channel_modes.no_external_messages = true;
-                                chars.next();
-                            }
-                            'k' => {
-                                chars.next(); // Consumir 'k'
-                                // Buscar la clave después del espacio
-                                let mut key = String::new();
-                                while let Some(&next_ch) = chars.peek() {
-                                    if next_ch.is_whitespace() {
-                                        chars.next();
-                                        break;
-                                    }
-                                    key.push(chars.next().unwrap());
-                                }
-                                if !key.is_empty() {
-                                    channel_modes.key = Some(key);
-                                }
-                            }
-                            'l' => {
-                                chars.next(); // Consumir 'l'
-                                // Buscar el límite después del espacio
-                                let mut limit_str = String::new();
-                                while let Some(&next_ch) = chars.peek() {
-                                    if next_ch.is_whitespace() {
-                                        chars.next();
-                                        break;
-                                    }
-                                    limit_str.push(chars.next().unwrap());
-                                }
-                                if let Ok(limit) = limit_str.parse::<usize>() {
-                                    channel_modes.client_limit = Some(limit);
-                                }
-                            }
-                            _ => {
-                                // Modo desconocido, saltarlo
-                                chars.next();
-                            }
-                        }
-                    }
-                }
-                '-' => {
-                    // Procesar modos negativos
-                    while let Some(&mode) = chars.peek() {
-                        match mode {
-                            'i' => {
-                                channel_modes.invite_only = false;
-                                chars.next();
-                            }
-                            'm' => {
-                                channel_modes.moderated = false;
-                                chars.next();
-                            }
-                            's' => {
-                                channel_modes.secret = false;
-                                chars.next();
-                            }
-                            't' => {
-                                channel_modes.protected_topic = false;
-                                chars.next();
-                            }
-                            'n' => {
-                                channel_modes.no_external_messages = false;
-                                chars.next();
-                            }
-                            'k' => {
-                                channel_modes.key = None;
-                                chars.next();
-                            }
-                            'l' => {
-                                channel_modes.client_limit = None;
-                                chars.next();
-                            }
-                            _ => {
-                                // Modo desconocido, saltarlo
-                                chars.next();
-                            }
-                        }
-                    }
-                }
-                _ => {
-                    // Carácter no reconocido, continuar
-                }
-            }
-        }
     }
 
     pub(super) async fn process_part<'a>(
