@@ -381,7 +381,7 @@ impl super::MainState {
                 let desactivar = modo_str.eq_ignore_ascii_case("off");
 
                 if !desactivar && !self.validate_mlock_modes(modo_str) {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos inválidos para mlock. Modos permitidos: +ntklmi", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos inválidos para mlock. Modos permitidos: +ntklmiO.\nEl modo +O restringe el canal solo a IRCops.", client)).await?;
                     return Ok(());
                 }
                 
@@ -463,8 +463,8 @@ impl super::MainState {
             return false;
         }
         
-        // Modos permitidos para mlock: n, t, k, l, m, i
-        let allowed_modes = ['n', 't', 'k', 'l', 'm', 'i'];
+        // Modos permitidos para mlock: n, t, k, l, m, i, O
+        let allowed_modes = ['n', 't', 'k', 'l', 'm', 'i', 'O'];
         
         // Verificar cada carácter después del signo
         for c in modes[1..].chars() {
@@ -538,6 +538,10 @@ impl super::MainState {
                                     channel_modes.client_limit = Some(limit);
                                 }
                             }
+                            'O' => {
+                                channel_modes.only_ircops = true;
+                                chars.next();
+                            }
                             _ => {
                                 // Modo desconocido, saltarlo
                                 chars.next();
@@ -575,6 +579,10 @@ impl super::MainState {
                             }
                             'l' => {
                                 channel_modes.client_limit = None;
+                                chars.next();
+                            }
+                            'O' => {
+                                channel_modes.only_ircops = false;
                                 chars.next();
                             }
                             _ => {

@@ -153,6 +153,7 @@ pub(crate) struct ChannelModes {
     pub(crate) secret: bool,
     pub(crate) protected_topic: bool,
     pub(crate) no_external_messages: bool,
+    pub(crate) only_ircops: bool,
 }
 
 impl ChannelModes {
@@ -318,6 +319,9 @@ impl fmt::Display for ChannelModes {
                 s += " +v ";
                 s += v;
             });
+        }
+        if self.only_ircops {
+            s.push('O');
         }
         f.write_str(&s)
     }
@@ -653,7 +657,8 @@ mod test {
                 moderated: false,
                 secret: false,
                 protected_topic: true,
-                no_external_messages: true
+                no_external_messages: true,
+                only_ircops: false,
             }
             .to_string()
         );
@@ -674,6 +679,7 @@ mod test {
             secret: true,
             protected_topic: true,
             no_external_messages: false,
+            only_ircops: false,
         }
         .to_string();
         assert!(
@@ -697,6 +703,7 @@ mod test {
             secret: false,
             protected_topic: false,
             no_external_messages: true,
+            only_ircops: false,
         }
         .to_string();
         assert!(
@@ -720,6 +727,7 @@ mod test {
             secret: false,
             protected_topic: false,
             no_external_messages: true,
+            only_ircops: false,
         }
         .to_string();
         assert!(

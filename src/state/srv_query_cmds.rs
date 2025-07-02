@@ -475,6 +475,12 @@ impl super::MainState {
                 },
             )
             .await?;
+            if chanobj.modes.only_ircops {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    format!("NOTICE {} :El modo +O está activo: solo IRCops pueden unirse a este canal.", client)
+                ).await?;
+            }
             self.feed_msg(
                 &mut conn_state.stream,
                 RplCreationTime329 {

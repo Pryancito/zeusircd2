@@ -427,6 +427,11 @@ pub(crate) enum Reply<'a> {
         client: &'a str,
         channel: &'a str,
     },
+    /// Solo IRCops pueden entrar al canal (+O)
+    ErrCannotJoinIrcopsOnly {
+        client: &'a str,
+        channel: &'a str,
+    },
     ErrBannedFromChan474 {
         client: &'a str,
         channel: &'a str,
@@ -1086,6 +1091,9 @@ impl<'a> fmt::Display for Reply<'a> {
             }
             ErrInviteOnlyChan473 { client, channel } => {
                 write!(f, "473 {} {} :Cannot join channel (+i)", client, channel)
+            }
+            ErrCannotJoinIrcopsOnly { client, channel } => {
+                write!(f, "489 {} {} :Cannot join channel (+O)", client, channel)
             }
             ErrBannedFromChan474 { client, channel } => {
                 write!(f, "474 {} {} :Cannot join channel (+b)", client, channel)

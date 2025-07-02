@@ -146,6 +146,8 @@ secret = false
 protected_topic = false
 # If true then nobody outside channel can send message to channel.
 no_external_messages = true
+# If true only ircops can enter at channel.
+only_ircops = false
 
 # Configuración de servidores AMQP
 [amqp]

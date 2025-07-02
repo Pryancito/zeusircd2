@@ -133,8 +133,8 @@ impl super::MainState {
                                                         )
                                                         .await?;
                                                         return Ok(());
-                                                    } else {
-                                                        true
+                    } else {
+                        true
                                                     }
                                                 } else {
                                                     // No se pudo extraer la clave, permitir entrada
@@ -240,6 +240,24 @@ impl super::MainState {
                     // check whether user is not alrady joined
                     let do_join = do_join && !channel.users.contains_key(&user_nick);
 
+                    // Verificar modo +O (solo IRCops)
+                    let do_join = if channel.modes.only_ircops {
+                        if !user.modes.is_local_oper() {
+                            self.feed_msg(
+                                &mut conn_state.stream,
+                                ErrCannotJoinIrcopsOnly {
+                                    client,
+                                    channel: chname_str,
+                                },
+                            ).await?;
+                            false
+                        } else {
+                            do_join
+                        }
+                    } else {
+                        do_join
+                    };
+
                     if do_join {
                         (true, false)
                     } else {
@@ -293,11 +311,24 @@ impl super::MainState {
                                             permitido = false;
                                         }
                                     }
+                                    // Verificar +O (solo IRCops)
+                                    if modes_str.contains("O") {
+                                        if !self.is_ircop(&user_nick).await {
+                                            self.feed_msg(
+                                                &mut conn_state.stream,
+                                                ErrCannotJoinIrcopsOnly {
+                                                    client,
+                                                    channel: chname_str,
+                                                },
+                                            ).await?;
+                                            permitido = false;
+                                        }
+                                    }
                                 }
                             }
                         }
                         if permitido {
-                            (true, true)
+                    (true, true)
                         } else {
                             (false, false)
                         }
