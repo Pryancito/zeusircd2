@@ -1194,22 +1194,16 @@ impl<'a> Command<'a> {
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             CHANSERV { subcommand, .. } => {
-                if *subcommand == "drop" {
-                    Ok(())
-                } else if *subcommand == "register" {
-                    Ok(())
-                } else {
-                    Err(UnknownSubcommand(CHANSERVId, subcommand.to_string()))
+                match subcommand.to_lowercase().as_str() {
+                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer" => Ok(()),
+                    _ => Err(UnknownSubcommand(CHANSERVId, subcommand.to_string()))
                 }
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             CS { subcommand, .. } => {
-                if *subcommand == "drop" {
-                    Ok(())
-                } else if *subcommand == "register" {
-                    Ok(())
-                } else {
-                    Err(UnknownSubcommand(CSId, subcommand.to_string()))
+                match subcommand.to_lowercase().as_str() {
+                    "register" | "drop" | "topic" | "vop" | "hop" | "aop" | "sop" | "transfer"=> Ok(()),
+                    _ => Err(UnknownSubcommand(CSId, subcommand.to_string()))
                 }
             }
             SETNAME { realname } => validate_username(realname).map_err(|_| WrongParameter(SETNAMEId, 0)),

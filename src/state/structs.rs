@@ -350,10 +350,11 @@ pub(super) struct ChannelUserModes {
 impl ChannelUserModes {
     pub(super) fn new_for_created_channel() -> Self {
         ChannelUserModes {
-            founder: true,
+            // No asignar modos automáticamente - ChanServ se encarga de esto
+            founder: false,
             protected: false,
             voice: false,
-            operator: true,
+            operator: false,
             half_oper: false,
         }
     }

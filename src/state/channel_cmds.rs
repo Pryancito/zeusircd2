@@ -33,15 +33,32 @@ impl super::MainState {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let mut statem = self.state.write().await;
         let state = statem.deref_mut();
-        let user_nick = conn_state.user_state.nick.as_ref().unwrap().clone();
-        let user_joined = state.users.get(&user_nick).unwrap().channels.len();
+        
+        // Verificar que el usuario tenga un nick asignado
+        let user_nick = if let Some(nick) = &conn_state.user_state.nick {
+            nick.clone()
+        } else {
+            return Err("Usuario no tiene nick asignado".into());
+        };
+        
+        // Verificar que el usuario exista en el estado
+        let user_joined = if let Some(user) = state.users.get(&user_nick) {
+            user.channels.len()
+        } else {
+            return Err("Usuario no encontrado en el estado".into());
+        };
+        
         let mut join_count = user_joined;
 
         let mut joined_created = vec![];
 
         {
             let client = conn_state.user_state.client_name();
-            let user = state.users.get_mut(user_nick.as_str()).unwrap();
+            let user = if let Some(user) = state.users.get_mut(user_nick.as_str()) {
+                user
+            } else {
+                return Err("Usuario no encontrado en el estado".into());
+            };
             for (i, chname_str) in channels.iter().enumerate() {
                 let chname = chname_str.to_string();
                 let (join, create) = if let Some(channel) = state.channels.get(&chname) {
@@ -63,7 +80,7 @@ impl super::MainState {
                                 true
                             }
                         } else {
-                            // no key then bad key
+                            // no key then bad key - siempre requerir clave si está configurada
                             self.feed_msg(
                                 &mut conn_state.stream,
                                 ErrBadChannelKey475 {
@@ -75,7 +92,69 @@ impl super::MainState {
                             false
                         }
                     } else {
-                        true
+                        // Verificar si el canal está registrado en ChanServ y tiene clave configurada
+                        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                        let do_join = {
+                            if let Some(db_arc) = &self.databases.chan_db {
+                                if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
+                                    // Verificar si hay modos almacenados con clave
+                                    if let Some(modes_str) = &channel_info.3 {
+                                        if modes_str.contains("+k") {
+                                            // El canal registrado tiene modo +k, verificar clave
+                                            if let Some(ref keys) = keys_opt {
+                                                // Extraer la clave del string de modos
+                                                if let Some(key) = self.extract_key_from_modes(modes_str) {
+                                                    if key != keys[i] {
+                                                        self.feed_msg(
+                                                            &mut conn_state.stream,
+                                                            ErrBadChannelKey475 {
+                                                                client,
+                                                                channel: chname_str,
+                                                            },
+                                                        )
+                                                        .await?;
+                                                        false
+                                                    } else {
+                                                        true
+                                                    }
+                                                } else {
+                                                    // No se pudo extraer la clave, permitir entrada
+                                                    true
+                                                }
+                                            } else {
+                                                // No se proporcionó clave para canal con +k
+                                                self.feed_msg(
+                                                    &mut conn_state.stream,
+                                                    ErrBadChannelKey475 {
+                                                        client,
+                                                        channel: chname_str,
+                                                    },
+                                                )
+                                                .await?;
+                                                false
+                                            }
+                                        } else {
+                                            // No tiene modo +k, permitir entrada
+                                            true
+                                        }
+                                    } else {
+                                        // No hay modos almacenados, permitir entrada
+                                        true
+                                    }
+                                } else {
+                                    // Canal no registrado, usar lógica normal
+                                    true
+                                }
+                            } else {
+                                // Base de datos no disponible, usar lógica normal
+                                true
+                            }
+                        };
+                        
+                        #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                        let do_join = true;
+                        
+                        do_join
                     };
 
                     // check whether user is banned
@@ -189,13 +268,164 @@ impl super::MainState {
                         );
                         state
                             .channels
-                            .insert(chname, Channel::new_on_user_join(user_nick.clone()));
+                            .insert(chname.clone(), Channel::new_on_user_join(user_nick.clone()));
+                        
+                        // Verificar si el canal está registrado y aplicar modos de ChanServ (para canales recién creados)
+                        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                        {
+                            if let Some(db_arc) = &self.databases.chan_db {
+                                if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
+                                    // El canal está registrado
+                                    let creator_nick = &channel_info.0; // El primer elemento es el creador
+                                    let chanobj = state.channels.get_mut(&chname).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    
+                                    // Verificar acceso de ChanServ para asignar modos
+                                    if let Ok(Some((access_level, _, _))) = db_arc.read().await.get_channel_access(&chname, &user_nick).await {
+                                        // Aplicar el nivel de acceso según ChanServ
+                                        match access_level.as_str() {
+                                            "sop" => {
+                                                user_chum.protected = true;
+                                                let mut protecteds = chanobj.modes.protecteds.take().unwrap_or_default();
+                                                protecteds.insert(user_nick.clone());
+                                                chanobj.modes.protecteds = Some(protecteds);
+                                            }
+                                            "aop" => {
+                                                user_chum.operator = true;
+                                                let mut operators = chanobj.modes.operators.take().unwrap_or_default();
+                                                operators.insert(user_nick.clone());
+                                                chanobj.modes.operators = Some(operators);
+                                            }
+                                            "hop" => {
+                                                user_chum.half_oper = true;
+                                                let mut half_operators = chanobj.modes.half_operators.take().unwrap_or_default();
+                                                half_operators.insert(user_nick.clone());
+                                                chanobj.modes.half_operators = Some(half_operators);
+                                            }
+                                            "vop" => {
+                                                user_chum.voice = true;
+                                                let mut voices = chanobj.modes.voices.take().unwrap_or_default();
+                                                voices.insert(user_nick.clone());
+                                                chanobj.modes.voices = Some(voices);
+                                            }
+                                            _ => {}
+                                        }
+                                    } else {
+                                        // Si no tiene acceso específico, verificar si es el creador del canal
+                                        if user_nick == *creator_nick {
+                                            user_chum.founder = true;
+                                            let mut founders = chanobj.modes.founders.take().unwrap_or_default();
+                                            founders.insert(user_nick.clone());
+                                            chanobj.modes.founders = Some(founders);
+                                        }
+                                    }
+                                    
+                                    // Aplicar topic y modos almacenados en ChanServ si existen
+                                    if let Some(topic) = &channel_info.2 {
+                                        if chanobj.topic.is_none() {
+                                            chanobj.topic = Some(ChannelTopic::new(topic.clone()));
+                                        }
+                                    }
+                                    
+                                    // Aplicar modos almacenados en ChanServ si existen
+                                    if let Some(modes_str) = &channel_info.3 {
+                                        // Parsear y aplicar los modos almacenados
+                                        self.apply_stored_modes(&mut chanobj.modes, modes_str);
+                                    }
+                                } else {
+                                    // El canal NO está registrado - asignar +q al creador
+                                    let chanobj = state.channels.get_mut(&chname).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    user_chum.founder = true;
+                                    let mut founders = chanobj.modes.founders.take().unwrap_or_default();
+                                    founders.insert(user_nick.clone());
+                                    chanobj.modes.founders = Some(founders);
+                                }
+                            } else {
+                                // Base de datos no disponible - no asignar modos automáticamente
+                                // para evitar asignar +q a canales que podrían estar registrados
+                            }
+                        }
+                        
+                        #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+                        {
+                            // Sin base de datos - no asignar modos automáticamente
+                            // para evitar asignar +q a canales que podrían estar registrados
+                        }
+                            
                     } else {
                         state
                             .channels
                             .get_mut(&chname)
                             .unwrap()
                             .add_user(&user_nick);
+                        
+                                                // Verificar si el canal está registrado y aplicar modos de ChanServ
+                        #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                        {
+                            #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                            if let Some(db_arc) = &self.databases.chan_db {
+                                if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
+                                    // El canal está registrado
+                                    let creator_nick = &channel_info.0; // El primer elemento es el creador
+                                    let chanobj = state.channels.get_mut(&chname).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    
+                                    // Verificar acceso de ChanServ para asignar modos
+                                    if let Ok(Some((access_level, _, _))) = db_arc.read().await.get_channel_access(&chname, &user_nick).await {
+                                        // Aplicar el nivel de acceso según ChanServ
+                                        match access_level.as_str() {
+                                            "sop" => {
+                                                user_chum.protected = true;
+                                                let mut protecteds = chanobj.modes.protecteds.take().unwrap_or_default();
+                                                protecteds.insert(user_nick.clone());
+                                                chanobj.modes.protecteds = Some(protecteds);
+                                            }
+                                            "aop" => {
+                                                user_chum.operator = true;
+                                                let mut operators = chanobj.modes.operators.take().unwrap_or_default();
+                                                operators.insert(user_nick.clone());
+                                                chanobj.modes.operators = Some(operators);
+                                            }
+                                            "hop" => {
+                                                user_chum.half_oper = true;
+                                                let mut half_operators = chanobj.modes.half_operators.take().unwrap_or_default();
+                                                half_operators.insert(user_nick.clone());
+                                                chanobj.modes.half_operators = Some(half_operators);
+                                            }
+                                            "vop" => {
+                                                user_chum.voice = true;
+                                                let mut voices = chanobj.modes.voices.take().unwrap_or_default();
+                                                voices.insert(user_nick.clone());
+                                                chanobj.modes.voices = Some(voices);
+                                            }
+                                            _ => {}
+                                        }
+                                    } else {
+                                        // Si no tiene acceso específico, verificar si es el creador del canal
+                                        if user_nick == *creator_nick {
+                                            user_chum.founder = true;
+                                            let mut founders = chanobj.modes.founders.take().unwrap_or_default();
+                                            founders.insert(user_nick.clone());
+                                            chanobj.modes.founders = Some(founders);
+                                        }
+                                    }
+                                    
+                                    // Aplicar topic y modos almacenados en ChanServ si existen
+                                    if let Some(topic) = &channel_info.2 {
+                                        if chanobj.topic.is_none() {
+                                            chanobj.topic = Some(ChannelTopic::new(topic.clone()));
+                                        }
+                                    }
+                                    
+                                    // Aplicar modos almacenados en ChanServ si existen
+                                    if let Some(modes_str) = &channel_info.3 {
+                                        // Parsear y aplicar los modos almacenados
+                                        self.apply_stored_modes(&mut chanobj.modes, modes_str);
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -293,6 +523,153 @@ impl super::MainState {
         }
 
         Ok(())
+    }
+
+    // Función helper para extraer la clave del string de modos
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    fn extract_key_from_modes(&self, modes_str: &str) -> Option<String> {
+        let mut chars = modes_str.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            if ch == '+' {
+                while let Some(&mode) = chars.peek() {
+                    if mode == 'k' {
+                        chars.next(); // Consumir 'k'
+                        // Buscar la clave después del espacio
+                        let mut key = String::new();
+                        while let Some(&next_ch) = chars.peek() {
+                            if next_ch.is_whitespace() {
+                                chars.next();
+                                break;
+                            }
+                            key.push(chars.next().unwrap());
+                        }
+                        if !key.is_empty() {
+                            return Some(key);
+                        }
+                    } else {
+                        chars.next();
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    // Función helper para aplicar modos almacenados en ChanServ
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    fn apply_stored_modes(&self, channel_modes: &mut ChannelModes, modes_str: &str) {
+        // Parsear los modos almacenados y aplicarlos al canal
+        // Los modos se almacenan como string (ej: "+ntk clave123")
+        let mut chars = modes_str.chars().peekable();
+        
+        while let Some(ch) = chars.next() {
+            match ch {
+                '+' => {
+                    // Procesar modos positivos
+                    while let Some(&mode) = chars.peek() {
+                        match mode {
+                            'i' => {
+                                channel_modes.invite_only = true;
+                                chars.next();
+                            }
+                            'm' => {
+                                channel_modes.moderated = true;
+                                chars.next();
+                            }
+                            's' => {
+                                channel_modes.secret = true;
+                                chars.next();
+                            }
+                            't' => {
+                                channel_modes.protected_topic = true;
+                                chars.next();
+                            }
+                            'n' => {
+                                channel_modes.no_external_messages = true;
+                                chars.next();
+                            }
+                            'k' => {
+                                chars.next(); // Consumir 'k'
+                                // Buscar la clave después del espacio
+                                let mut key = String::new();
+                                while let Some(&next_ch) = chars.peek() {
+                                    if next_ch.is_whitespace() {
+                                        chars.next();
+                                        break;
+                                    }
+                                    key.push(chars.next().unwrap());
+                                }
+                                if !key.is_empty() {
+                                    channel_modes.key = Some(key);
+                                }
+                            }
+                            'l' => {
+                                chars.next(); // Consumir 'l'
+                                // Buscar el límite después del espacio
+                                let mut limit_str = String::new();
+                                while let Some(&next_ch) = chars.peek() {
+                                    if next_ch.is_whitespace() {
+                                        chars.next();
+                                        break;
+                                    }
+                                    limit_str.push(chars.next().unwrap());
+                                }
+                                if let Ok(limit) = limit_str.parse::<usize>() {
+                                    channel_modes.client_limit = Some(limit);
+                                }
+                            }
+                            _ => {
+                                // Modo desconocido, saltarlo
+                                chars.next();
+                            }
+                        }
+                    }
+                }
+                '-' => {
+                    // Procesar modos negativos
+                    while let Some(&mode) = chars.peek() {
+                        match mode {
+                            'i' => {
+                                channel_modes.invite_only = false;
+                                chars.next();
+                            }
+                            'm' => {
+                                channel_modes.moderated = false;
+                                chars.next();
+                            }
+                            's' => {
+                                channel_modes.secret = false;
+                                chars.next();
+                            }
+                            't' => {
+                                channel_modes.protected_topic = false;
+                                chars.next();
+                            }
+                            'n' => {
+                                channel_modes.no_external_messages = false;
+                                chars.next();
+                            }
+                            'k' => {
+                                channel_modes.key = None;
+                                chars.next();
+                            }
+                            'l' => {
+                                channel_modes.client_limit = None;
+                                chars.next();
+                            }
+                            _ => {
+                                // Modo desconocido, saltarlo
+                                chars.next();
+                            }
+                        }
+                    }
+                }
+                _ => {
+                    // Carácter no reconocido, continuar
+                }
+            }
+        }
     }
 
     pub(super) async fn process_part<'a>(

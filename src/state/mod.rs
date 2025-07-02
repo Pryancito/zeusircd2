@@ -83,6 +83,9 @@ pub(crate) struct MainState {
     serv_comm: RwLock<ServerCommunication>,
     created: String,
     created_time: DateTime<Local>,
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    command_counts: [AtomicU64; 57],
+    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
     command_counts: [AtomicU64; 42],
 }
 
@@ -160,11 +163,27 @@ impl MainState {
             conns_count,
             created: now.to_rfc2822(),
             created_time: now,
+            #[cfg(any(feature = "sqlite", feature = "mysql"))]
             command_counts: [
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0)
+            ],
+            #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
+            command_counts: [
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
+                AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),  
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
                 AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0), AtomicU64::new(0),
@@ -177,6 +196,17 @@ impl MainState {
 
     fn count_command(&self, cmd: &Command) {
         self.command_counts[cmd.index()].fetch_add(1, Ordering::SeqCst);
+    }
+
+    // Verificar si un usuario es IRCop
+    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+    async fn is_ircop(&self, nick: &str) -> bool {
+        let state = self.state.read().await;
+        if let Some(user) = state.users.get(nick) {
+            user.modes.is_local_oper()
+        } else {
+            false
+        }
     }
 
     // try to register connection state - print error if too many connections.

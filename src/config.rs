@@ -156,12 +156,12 @@ pub(crate) struct ChannelModes {
 }
 
 impl ChannelModes {
-    // create new channel modes for new channel created by user. By default,
-    // user that created channel is founder and operator in this channel.
-    pub(crate) fn new_for_channel(user_nick: String) -> Self {
+    // create new channel modes for new channel created by user.
+    // Note: Modos de usuario (founder, operator, etc.) ahora se asignan
+    // dinámicamente por ChanServ según los accesos configurados.
+    pub(crate) fn new_for_channel(_user_nick: String) -> Self {
         ChannelModes {
-            operators: Some([user_nick.clone()].into()),
-            founders: Some([user_nick].into()),
+            // No asignar modos automáticamente - ChanServ se encarga de esto
             ..ChannelModes::default()
         }
     }
