@@ -2,7 +2,7 @@
 name = "zeusircd2"
 authors = ["Moebius ( Pryan )"]
 license = "LGPL-2.1-or-later"
-version = "0.0.6"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.87.0"
 description = "Next generation ircd"
