@@ -371,21 +371,6 @@ pub mod mysql_impl {
             Ok(())
         }
 
-        async fn update_channel_owner(
-            &mut self,
-            channel_name: &str,
-            new_owner: &str,
-        ) -> Result<(), Box<dyn Error + Send + Sync>> {
-            if let Some(pool) = &self.pool {
-                sqlx::query("UPDATE channels SET creator_nick = ? WHERE channel_name = ?")
-                    .bind(new_owner)
-                    .bind(channel_name)
-                    .execute(pool)
-                    .await?;
-            }
-            Ok(())
-        }
-
         async fn delete_channel(&mut self, channel_name: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 sqlx::query("DELETE FROM channels WHERE channel_name = ?")

@@ -32,14 +32,14 @@ impl super::MainState {
         let nick = if let Some(nick) = &conn_state.user_state.nick {
             nick
         } else {
-            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes un nick.", client)).await?;
+            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You don't have a nick.", client)).await?;
             return Ok(());
         };
 
         match subcommand.to_lowercase().as_str() {
             "register" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS REGISTER <canal>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS REGISTER <channel>", client)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
@@ -47,19 +47,19 @@ impl super::MainState {
                 if let Some(db_arc) = &self.databases.chan_db {
                     let mut db = db_arc.write().await;
                     if db.get_channel_info(channel).await?.is_some() {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ya está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' is already registered.", client, channel)).await?;
                         return Ok(());
                     }
 
                     db.add_channel(channel, nick, SystemTime::now()).await?;
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido registrado.", client, channel)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' has been registered.", client, channel)).await?;
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
                 }
             }
             "drop" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS DROP <canal>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS DROP <channel>", client)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
@@ -67,27 +67,27 @@ impl super::MainState {
                 if let Some(db_arc) = &self.databases.chan_db {
                     let mut db = db_arc.write().await;
                     if let Some(channel_info) = db.get_channel_info(channel).await? {
-                        // Verificar permisos: solo el creador del canal o un IRCop pueden dropearlo
+                        // Check permissions: only the channel creator or an IRCop can drop it
                         let is_creator = nick == &channel_info.0;
                         let is_ircop = self.is_ircop(nick).await;
                         
                         if !is_creator && !is_ircop {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para eliminar el canal '{}'. Solo el creador del canal o un IRCop pueden hacerlo.", client, channel)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You don't have permission to delete channel '{}'. Only the channel creator or an IRCop can do this.", client, channel)).await?;
                             return Ok(());
                         }
                         
                         db.delete_channel(channel).await?;
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido eliminado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' has been deleted.", client, channel)).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' is not registered.", client, channel)).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
                 }
             }
             "info" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS INFO <canal>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS INFO <channel>", client)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
@@ -102,33 +102,24 @@ impl super::MainState {
                             .unwrap_or_default()
                             .format("%Y-%m-%d %H:%M:%S");
                         
-                        // Información básica del canal
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Información del canal {}: Creado por {} el {}", client, channel, info.0, datetime)).await?;
+                        // Basic channel information
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel {} information: Created by {} on {}", client, channel, info.0, datetime)).await?;
                         
-                        // Mostrar topic si existe
+                        // Show topic if it exists
                         if let Some(topic) = &info.2 {
                             self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic: {}", client, topic)).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic: No establecido", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic: Not set", client)).await?;
                         }
                         
-                        // Mostrar modos del canal
-                        let state = self.state.read().await;
-                        if let Some(chanobj) = state.channels.get(channel) {
-                            let modes = chanobj.modes.to_string();
-                            if !modes.is_empty() {
-                                let modos_str = match &info.3 {
-                                    Some(modos) if !modos.is_empty() => modos.as_str(),
-                                    _ => "Sin modos especiales",
-                                };
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos: {}", client, modos_str)).await?;
-                            } else {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos: Sin modos especiales", client)).await?;
-                            }
-                        }
-                        drop(state);
+                        // Show channel modes from database
+                        let modos_str = match &info.3 {
+                            Some(modos) if !modos.is_empty() => modos.as_str(),
+                            _ => "No special modes",
+                        };
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modes: {}", client, modos_str)).await?;
                         
-                        // Mostrar acceso del usuario si lo tiene
+                        // Show user access if they have any
                         if let Ok(Some((access_level, setter, set_time))) = db.get_channel_access(channel, nick).await {
                             let access_time = set_time.duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap_or_default()
@@ -136,40 +127,40 @@ impl super::MainState {
                             let access_datetime = chrono::DateTime::from_timestamp(access_time as i64, 0)
                                 .unwrap_or_default()
                                 .format("%Y-%m-%d %H:%M:%S");
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Tu acceso: {} (establecido por {} el {})", client, access_level.to_uppercase(), setter, access_datetime)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Your access: {} (set by {} on {})", client, access_level.to_uppercase(), setter, access_datetime)).await?;
                         }
                         
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' is not registered.", client, channel)).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
                 }
             }
             "vop" | "hop" | "aop" | "sop" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS {} <canal> <add|del|list> [nick]", client, subcommand)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} <channel> <add|del|list> [nick]", client, subcommand)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
                 let action = params[1].to_lowercase();
                 
-                // Verificar que el canal existe
+                // Check if channel exists
                 if let Some(db_arc) = &self.databases.chan_db {
                     let db = db_arc.read().await;
                     if db.get_channel_info(channel).await?.is_none() {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' is not registered.", client, channel)).await?;
                         return Ok(());
                     }
                     
-                    // Verificar permisos: solo SOP y el creador del canal pueden cambiar accesos
+                    // Check permissions: only SOP and channel creator can change access
                     let channel_info = db.get_channel_info(channel).await?;
                     let is_creator = nick == &channel_info.unwrap().0;
                     let is_sop = db.get_channel_access(channel, nick).await?.map_or(false, |access| access.0 == "sop");
                     let is_ircop = self.is_ircop(nick).await;
                     
                     if !is_creator && !is_sop && !is_ircop {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para modificar accesos en '{}'. Solo los SOP y el creador del canal pueden hacerlo.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You don't have permission to modify access in '{}'. Only SOP and channel creator can do this.", client, channel)).await?;
                         return Ok(());
                     }
                     
@@ -180,126 +171,70 @@ impl super::MainState {
                     match action.as_str() {
                         "add" => {
                             if params.len() < 3 {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS {} {} <canal> add <nick>", client, subcommand, channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} {} <channel> add <nick>", client, subcommand, channel)).await?;
                                 return Ok(());
                             }
                             let target_nick = params[2];
                             
-                            // Verificar si ya existe el acceso
+                            // Check if access already exists
                             if let Some(existing) = db.get_channel_access(channel, target_nick).await? {
                                 if existing.0 == subcommand.to_lowercase() {
-                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} ya tiene acceso {} en {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} already has {} access in {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
                                 } else {
-                                    // Actualizar el nivel de acceso
+                                    // Update access level
                                     db.update_channel_access(channel, target_nick, &subcommand.to_lowercase(), nick, SystemTime::now()).await?;
-                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El nivel de acceso de {} en {} ha sido actualizado a {}.", client, target_nick, channel, subcommand.to_uppercase())).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{}'s access level in {} has been updated to {}.", client, target_nick, channel, subcommand.to_uppercase())).await?;
                                 }
                             } else {
-                                // Agregar nuevo acceso
+                                // Add new access
                                 db.add_channel_access(channel, target_nick, &subcommand.to_lowercase(), nick, SystemTime::now()).await?;
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} ha sido agregado a la lista {} de {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} has been added to the {} list of {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
                             }
                         }
                         "del" => {
                             if params.len() < 3 {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS {} {} <canal> del <nick>", client, subcommand, channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} {} <channel> del <nick>", client, subcommand, channel)).await?;
                                 return Ok(());
                             }
                             let target_nick = params[2];
                             
-                            // Verificar si existe el acceso
+                            // Check if access exists
                             if let Some(existing) = db.get_channel_access(channel, target_nick).await? {
                                 if existing.0 == subcommand.to_lowercase() {
                                     db.delete_channel_access(channel, target_nick).await?;
-                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} ha sido removido de la lista {} de {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} has been removed from the {} list of {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
                                 } else {
-                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} no tiene acceso {} en {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} doesn't have {} access in {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
                                 }
                             } else {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} no tiene acceso {} en {}.", client, target_nick, subcommand.to_uppercase(), channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} doesn't have any access in {}.", client, target_nick, channel)).await?;
                             }
                         }
                         "list" => {
+                            // List all users with this access level
                             let access_list = db.get_channel_access_list(channel, Some(&subcommand.to_lowercase())).await?;
                             if access_list.is_empty() {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No hay usuarios en la lista {} de {}.", client, subcommand.to_uppercase(), channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No users with {} access in {}.", client, subcommand.to_uppercase(), channel)).await?;
                             } else {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Lista {} de {}:", client, subcommand.to_uppercase(), channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :List {} of {}:", client, subcommand.to_uppercase(), channel)).await?;
                                 for (nick, _level, added_by, added_time) in access_list {
                                     let datetime = chrono::DateTime::from_timestamp(added_time.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs() as i64, 0)
                                         .unwrap_or_default()
                                         .format("%Y-%m-%d %H:%M:%S");
-                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  {} (agregado por {} el {})", client, nick, added_by, datetime)).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  {} (added by {} on {})", client, nick, added_by, datetime)).await?;
                                 }
                             }
                         }
                         _ => {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Acción desconocida. Usa: add, del, o list.", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Invalid action. Use: add, del, or list", client)).await?;
                         }
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
-                }
-            }
-            "transfer" => {
-                if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS TRANSFER <canal> <nick>", client)).await?;
-                    return Ok(());
-                }
-                let channel = params[0];
-                let target_nick = params[1];
-
-                if let Some(db_arc) = &self.databases.chan_db {
-                    let mut db = db_arc.write().await;
-                    if db.get_channel_info(channel).await?.is_none() {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
-                        return Ok(());
-                    }
-                    
-                    // Verificar que el usuario objetivo esté registrado con NickServ
-                    if let Some(nick_db_arc) = &self.databases.nick_db {
-                        let nick_db = nick_db_arc.read().await;
-                        if nick_db.get_nick_info(target_nick).await?.is_none() {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El usuario '{}' no está registrado con NickServ.", client, target_nick)).await?;
-                            return Ok(());
-                        }
-                    }
-                    
-                    // Obtener información del canal para verificar permisos
-                    if let Some(channel_info) = db.get_channel_info(channel).await? {
-                        let current_owner = &channel_info.0; // El primer elemento es el propietario
-                        
-                        // Verificar permisos: solo el propietario del canal o un IRCop puede transferir
-                        let is_owner = nick == current_owner;
-                        let is_ircop = self.is_ircop(nick).await;
-                        
-                        if !is_owner && !is_ircop {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para transferir el canal '{}'. Solo el propietario o un IRCop puede hacerlo.", client, channel)).await?;
-                            return Ok(());
-                        }
-                        
-                        // Realizar la transferencia - actualizar el propietario del canal
-                        db.update_channel_owner(channel, target_nick).await?;
-                        
-                        // Notificar el cambio
-                        if is_ircop {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido transferido de {} a {} por un IRCop.", client, channel, current_owner, target_nick)).await?;
-                        } else {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido transferido exitosamente a {}.", client, channel, target_nick)).await?;
-                        }
-                        
-                        // Notificar al nuevo propietario
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Has recibido la propiedad del canal '{}' de {}.", target_nick, channel, current_owner)).await?;
-                        
-                    } else {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error al obtener información del canal '{}'.", client, channel)).await?;
-                    }
-                } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
                 }
             } "topic" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS TOPIC <canal> <topic>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS TOPIC <channel> <topic>", client)).await?;
                     return Ok(());
                 }
 
@@ -309,7 +244,7 @@ impl super::MainState {
                 if let Some(db_arc) = &self.databases.chan_db {
                     let mut db = db_arc.write().await;
                     if db.get_channel_info(channel).await?.is_none() {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The channel '{}' is not registered.", client, channel)).await?;
                         return Ok(());
                     }
 
@@ -327,7 +262,7 @@ impl super::MainState {
                         };
                         
                         if !is_owner && !is_ircop && !has_access {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para cambiar el topic del canal '{}'. Necesitas ser IRCop, propietario, AOP o superior.", client, channel)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You don't have permission to change the topic of the channel '{}'. You need to be an IRCop, owner, AOP or superior.", client, channel)).await?;
                             return Ok(());
                         }
                         
@@ -335,7 +270,7 @@ impl super::MainState {
                         db.update_channel_info(channel, Some(&new_topic), None).await?;
                         
                         // Notificar el cambio
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El topic del canal '{}' ha sido cambiado a: {}", client, channel, new_topic)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The topic of the channel '{}' has been changed to: {}", client, channel, new_topic)).await?;
                         
                         // Enviar el cambio de topic a todos los usuarios del canal
                         let mut state = self.state.write().await;
@@ -359,21 +294,21 @@ impl super::MainState {
                         }
                         
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error al obtener información del canal '{}'.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error getting information about the channel '{}'.", client, channel)).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The database is not configured.", client)).await?;
                 }
             } "mlock" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS MLOCK <canal> [+modos|-modos|off] [argumentos]", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS MLOCK <channel> [+modes|-modes|off] [arguments]", client)).await?;
                     return Ok(());
                 }
                 let channel = params[0];
                 let args = params[1..].join(" ");
                 let modo_str = args.split_whitespace().next().unwrap_or("");
                 if modo_str.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Debes especificar los modos para MLOCK o 'off' para desactivarlo.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You must specify the modes for MLOCK or 'off' to deactivate it.", client)).await?;
                     return Ok(());
                 }
 
@@ -381,7 +316,7 @@ impl super::MainState {
                 let desactivar = modo_str.eq_ignore_ascii_case("off");
 
                 if !desactivar && !self.validate_mlock_modes(modo_str) {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Modos inválidos para mlock. Modos permitidos: +ntklmiO.\nEl modo +O restringe el canal solo a IRCops.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Invalid modes for mlock. Allowed modes: +ntklmiO.\nThe +O mode restricts the channel only to IRCops.", client)).await?;
                     return Ok(());
                 }
                 
@@ -389,7 +324,7 @@ impl super::MainState {
                 if let Some(db_arc) = &self.databases.chan_db {
                     let mut db = db_arc.write().await;
                     if db.get_channel_info(channel).await?.is_none() {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The channel '{}' is not registered.", client, channel)).await?;
                         return Ok(());
                     }
                     
@@ -407,7 +342,7 @@ impl super::MainState {
                         };
                         
                         if !is_owner && !is_ircop && !has_access {
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para modificar el mlock del canal '{}'. Necesitas ser IRCop, propietario, AOP o superior.", client, channel)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You don't have permission to modify the mlock of the channel '{}'. You need to be an IRCop, owner, AOP or superior.", client, channel)).await?;
                             return Ok(());
                         }
                         
@@ -421,7 +356,7 @@ impl super::MainState {
                                 self.apply_stored_modes(&mut chanobj.modes, "");
                             }
                             drop(state);
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock del canal '{}' ha sido desactivado.", client, channel)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock of the channel '{}' has been deactivated.", client, channel)).await?;
                         } else {
                             // Actualizar el mlock en la base de datos
                             db.update_channel_info(channel, None, Some(&modo_str)).await?;
@@ -435,24 +370,23 @@ impl super::MainState {
                             drop(state);
                             
                             // Notificar el cambio
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock del canal '{}' establecido a: {}", client, channel, args)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock of the channel '{}' has been set to: {}", client, channel, args)).await?;
                         }
                         
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error al obtener información del canal '{}'.", client, channel)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error getting information about the channel '{}'.", client, channel)).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The database is not configured.", client)).await?;
                 }
             }
             _ => {
-                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Comando desconocido. Usa /CS HELP.", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Unknown command. Use /CS HELP for available commands.", client)).await?;
             }
         }
         Ok(())
     }
 
-    /// Valida que los modos proporcionados son válidos para mlock
     fn validate_mlock_modes(&self, modes: &str) -> bool {
         if modes.is_empty() {
             return true; // Permitir mlock vacío
@@ -476,7 +410,6 @@ impl super::MainState {
         true
     }
 
-    /// Aplica los modos almacenados al canal
     pub(super) fn apply_stored_modes(&self, channel_modes: &mut crate::config::ChannelModes, modes_str: &str) {
         // Parsear los modos almacenados y aplicarlos al canal
         // Los modos se almacenan como string (ej: "+ntk clave123")

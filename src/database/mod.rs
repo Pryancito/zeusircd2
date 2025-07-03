@@ -26,7 +26,6 @@ pub trait ChannelDatabase: Send + Sync {
     async fn add_channel(&mut self, channel_name: &str, creator_nick: &str, creation_time: SystemTime) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn get_channel_info(&self, channel_name: &str) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>>;
     async fn update_channel_info(&mut self, channel_name: &str, topic: Option<&str>, modes: Option<&str>) -> Result<(), Box<dyn Error + Send + Sync>>;
-    async fn update_channel_owner(&mut self, channel_name: &str, new_owner: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
     async fn delete_channel(&mut self, channel_name: &str) -> Result<(), Box<dyn Error + Send + Sync>>;
     
     // Funciones para manejo de acceso de canales
