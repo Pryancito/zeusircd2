@@ -437,6 +437,62 @@ impl super::MainState {
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The database is not configured.", client)).await?;
                 }
             }
+            "help" => {
+                if params.is_empty() {
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :ChanServ - Channel Registration Service", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Available commands:", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  REGISTER <channel> <description> - Register a channel", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  DROP <channel> - Delete a channel registration", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  INFO <channel> - Show channel information", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  TOPIC <channel> <topic> - Set channel topic", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  MLOCK <channel> <modes> - Set channel mode lock", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  VOP <channel> <add|del|list> [nick] - Manage voice operators", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  HOP <channel> <add|del|list> [nick] - Manage half operators", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  AOP <channel> <add|del|list> [nick] - Manage auto operators", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  SOP <channel> <add|del|list> [nick] - Manage super operators", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  HELP <command> - Get detailed help for a command", client)).await?;
+                    return Ok(());
+                }
+                
+                let command = params[0].to_lowercase();
+                match command.as_str() {
+                    "register" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :REGISTER <channel> <description>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Registers a channel with ChanServ.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You must be the channel founder to register it.", client)).await?;
+                    }
+                    "drop" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :DROP <channel>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Deletes a channel registration.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Only the channel founder or an IRCop can drop a channel.", client)).await?;
+                    }
+                    "info" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :INFO <channel>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Shows detailed information about a registered channel.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Displays founder, creation date, topic, modes, and your access level.", client)).await?;
+                    }
+                    "topic" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :TOPIC <channel> <topic>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Sets the topic for a registered channel.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You must be the channel founder or have AOP+ access.", client)).await?;
+                    }
+                    "mlock" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLOCK <channel> <modes>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Sets mode lock for a channel. Use 'OFF' to disable.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Allowed modes: n, t, k, l, m, i, O", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You must be the channel founder or have AOP+ access.", client)).await?;
+                    }
+                    "vop" | "hop" | "aop" | "sop" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :{} <channel> <add|del|list> [nick]", client, command.to_uppercase())).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Manages {} access for a channel.", client, command.to_uppercase())).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Access levels: VOP < HOP < AOP < SOP", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Only SOP and channel founder can modify access.", client)).await?;
+                    }
+                    _ => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Unknown command '{}'. Use /CS HELP for available commands.", client, command)).await?;
+                    }
+                }
+            }
             _ => {
                 self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Unknown command. Use /CS HELP for available commands.", client)).await?;
             }

@@ -637,7 +637,12 @@ impl super::MainState {
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  URL <url|OFF> - Set or disable your URL", client)).await?;
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  VHOST <vhost|OFF> - Set or disable your vhost", client)).await?;
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  NOACCESS <on|off> - Enable or disable no access mode", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  NOOP <on|off> - Enable or disable no op mode", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  SHOWMAIL <on|off> - Enable or disable showmail mode", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  PASSWORD <password> - Change your password", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  IDENTIFY <nickname> <password> - Identify yourself to the server", client)).await?;
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  INFO [nick] - Show nick information", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  HELP - Show available commands", client)).await?;
             }
             _ => {
                 self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Unknown command. Use /NS HELP for available commands.", client)).await?;
