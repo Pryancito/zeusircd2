@@ -377,6 +377,19 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
+    async fn update_channel_owner(
+        &mut self,
+        channel_name: &str,
+        new_owner: &str,
+    ) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        let query = "UPDATE channels SET creator_nick = ? WHERE channel_name = ?";
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((1, new_owner)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.bind((2, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
     async fn delete_channel(&mut self, channel_name: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let query = "DELETE FROM channels WHERE channel_name = ?";

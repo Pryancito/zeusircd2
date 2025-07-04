@@ -232,6 +232,63 @@ impl super::MainState {
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
                 }
+            }
+            "transfer" => {
+                if params.len() < 2 {
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Uso: /CS TRANSFER <canal> <nick>", client)).await?;
+                    return Ok(());
+                }
+                let channel = params[0];
+                let target_nick = params[1];
+
+                if let Some(db_arc) = &self.databases.chan_db {
+                    let mut db = db_arc.write().await;
+                    if db.get_channel_info(channel).await?.is_none() {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' no está registrado.", client, channel)).await?;
+                        return Ok(());
+                    }
+                    
+                    // Verificar que el usuario objetivo esté registrado con NickServ
+                    if let Some(nick_db_arc) = &self.databases.nick_db {
+                        let nick_db = nick_db_arc.read().await;
+                        if nick_db.get_nick_info(target_nick).await?.is_none() {
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El usuario '{}' no está registrado con NickServ.", client, target_nick)).await?;
+                            return Ok(());
+                        }
+                    }
+                    
+                    // Obtener información del canal para verificar permisos
+                    if let Some(channel_info) = db.get_channel_info(channel).await? {
+                        let current_owner = &channel_info.0; // El primer elemento es el propietario
+                        
+                        // Verificar permisos: solo el propietario del canal o un IRCop puede transferir
+                        let is_owner = nick == current_owner;
+                        let is_ircop = self.is_ircop(nick).await;
+                        
+                        if !is_owner && !is_ircop {
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :No tienes permisos para transferir el canal '{}'. Solo el propietario o un IRCop puede hacerlo.", client, channel)).await?;
+                            return Ok(());
+                        }
+                        
+                        // Realizar la transferencia - actualizar el propietario del canal
+                        db.update_channel_owner(channel, target_nick).await?;
+                        
+                        // Notificar el cambio
+                        if is_ircop {
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido transferido de {} a {} por un IRCop.", client, channel, current_owner, target_nick)).await?;
+                        } else {
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :El canal '{}' ha sido transferido exitosamente a {}.", client, channel, target_nick)).await?;
+                        }
+                        
+                        // Notificar al nuevo propietario
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Has recibido la propiedad del canal '{}' de {}.", target_nick, channel, current_owner)).await?;
+                        
+                    } else {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Error al obtener información del canal '{}'.", client, channel)).await?;
+                    }
+                } else {
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :La base de datos no está configurada.", client)).await?;
+                }
             } "topic" => {
                 if params.len() < 2 {
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS TOPIC <channel> <topic>", client)).await?;
