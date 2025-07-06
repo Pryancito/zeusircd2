@@ -479,43 +479,57 @@ impl super::MainState {
                                     let chanobj = state.channels.get_mut(&chname).unwrap();
                                     let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
                                     
-                                    // Verificar acceso de ChanServ para asignar modos
-                                    if let Ok(Some((access_level, _, _))) = db_arc.read().await.get_channel_access(&chname, &user_nick).await {
-                                        // Aplicar el nivel de acceso según ChanServ
-                                        match access_level.as_str() {
-                                            "sop" => {
-                                                user_chum.protected = true;
-                                                let mut protecteds = chanobj.modes.protecteds.take().unwrap_or_default();
-                                                protecteds.insert(user_nick.clone());
-                                                chanobj.modes.protecteds = Some(protecteds);
-                                            }
-                                            "aop" => {
-                                                user_chum.operator = true;
-                                                let mut operators = chanobj.modes.operators.take().unwrap_or_default();
-                                                operators.insert(user_nick.clone());
-                                                chanobj.modes.operators = Some(operators);
-                                            }
-                                            "hop" => {
-                                                user_chum.half_oper = true;
-                                                let mut half_operators = chanobj.modes.half_operators.take().unwrap_or_default();
-                                                half_operators.insert(user_nick.clone());
-                                                chanobj.modes.half_operators = Some(half_operators);
-                                            }
-                                            "vop" => {
-                                                user_chum.voice = true;
-                                                let mut voices = chanobj.modes.voices.take().unwrap_or_default();
-                                                voices.insert(user_nick.clone());
-                                                chanobj.modes.voices = Some(voices);
-                                            }
-                                            _ => {}
+                                    // Verificar si el usuario tiene la opción noop habilitada
+                                    let has_noop = if let Some(nick_db_arc) = &self.databases.nick_db {
+                                        if let Ok(Some((_, _, _, _, _, _, _, noop, _))) = nick_db_arc.read().await.get_nick_info(&user_nick).await {
+                                            noop
+                                        } else {
+                                            false
                                         }
                                     } else {
-                                        // Si no tiene acceso específico, verificar si es el creador del canal
-                                        if user_nick == *creator_nick {
-                                            user_chum.founder = true;
-                                            let mut founders = chanobj.modes.founders.take().unwrap_or_default();
-                                            founders.insert(user_nick.clone());
-                                            chanobj.modes.founders = Some(founders);
+                                        false
+                                    };
+                                    
+                                    // Solo asignar modos si no tiene noop habilitado
+                                    if !has_noop {
+                                        // Verificar acceso de ChanServ para asignar modos
+                                        if let Ok(Some((access_level, _, _))) = db_arc.read().await.get_channel_access(&chname, &user_nick).await {
+                                            // Aplicar el nivel de acceso según ChanServ
+                                            match access_level.as_str() {
+                                                "sop" => {
+                                                    user_chum.protected = true;
+                                                    let mut protecteds = chanobj.modes.protecteds.take().unwrap_or_default();
+                                                    protecteds.insert(user_nick.clone());
+                                                    chanobj.modes.protecteds = Some(protecteds);
+                                                }
+                                                "aop" => {
+                                                    user_chum.operator = true;
+                                                    let mut operators = chanobj.modes.operators.take().unwrap_or_default();
+                                                    operators.insert(user_nick.clone());
+                                                    chanobj.modes.operators = Some(operators);
+                                                }
+                                                "hop" => {
+                                                    user_chum.half_oper = true;
+                                                    let mut half_operators = chanobj.modes.half_operators.take().unwrap_or_default();
+                                                    half_operators.insert(user_nick.clone());
+                                                    chanobj.modes.half_operators = Some(half_operators);
+                                                }
+                                                "vop" => {
+                                                    user_chum.voice = true;
+                                                    let mut voices = chanobj.modes.voices.take().unwrap_or_default();
+                                                    voices.insert(user_nick.clone());
+                                                    chanobj.modes.voices = Some(voices);
+                                                }
+                                                _ => {}
+                                            }
+                                        } else {
+                                            // Si no tiene acceso específico, verificar si es el creador del canal
+                                            if user_nick == *creator_nick {
+                                                user_chum.founder = true;
+                                                let mut founders = chanobj.modes.founders.take().unwrap_or_default();
+                                                founders.insert(user_nick.clone());
+                                                chanobj.modes.founders = Some(founders);
+                                            }
                                         }
                                     }
                                     

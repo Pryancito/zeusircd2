@@ -176,6 +176,17 @@ impl super::MainState {
                             }
                             let target_nick = params[2];
                             
+                            // Verificar si el nick tiene noaccess habilitado
+                            if let Some(nick_db_arc) = &self.databases.nick_db {
+                                let nick_db = nick_db_arc.read().await;
+                                if let Ok(Some((_user, _registration_date, _email, _url, _vhost, _last_vhost, noaccess, _noop, _showmail))) = nick_db.get_nick_info(target_nick).await {
+                                    if noaccess {
+                                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Cannot add {} to access list. User has noaccess mode enabled.", client, target_nick)).await?;
+                                        return Ok(());
+                                    }
+                                }
+                            }
+                            
                             // Check if access already exists
                             if let Some(existing) = db.get_channel_access(channel, target_nick).await? {
                                 if existing.0 == subcommand.to_lowercase() {
@@ -451,6 +462,7 @@ impl super::MainState {
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  AOP <channel> <add|del|list> [nick] - Manage auto operators", client)).await?;
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  SOP <channel> <add|del|list> [nick] - Manage super operators", client)).await?;
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  HELP <command> - Get detailed help for a command", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :  TRANSFER <channel> <nick> - Transfer channel ownership", client)).await?;
                     return Ok(());
                 }
                 
@@ -487,6 +499,11 @@ impl super::MainState {
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Manages {} access for a channel.", client, command.to_uppercase())).await?;
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Access levels: VOP < HOP < AOP < SOP", client)).await?;
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Only SOP and channel founder can modify access.", client)).await?;
+                    }
+                    "transfer" => {
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :TRANSFER <channel> <nick>", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Transfers channel ownership to another user.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Only the channel founder or an IRCop can transfer ownership.", client)).await?;
                     }
                     _ => {
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Unknown command '{}'. Use /CS HELP for available commands.", client, command)).await?;
