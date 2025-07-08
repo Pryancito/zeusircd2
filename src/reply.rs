@@ -849,7 +849,7 @@ impl<'a> fmt::Display for Reply<'a> {
                 nick,
                 setat,
             } => {
-                write!(f, "333 {} {} {} {}", client, channel, nick, setat)
+                write!(f, "333 {} {} {} :{}", client, channel, nick, setat)
             }
             RplInviting341 {
                 client,

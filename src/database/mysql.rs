@@ -286,6 +286,8 @@ pub mod mysql_impl {
                         creator_nick VARCHAR(255) NOT NULL,
                         creation_time BIGINT NOT NULL,
                         topic TEXT,
+                        topic_setter VARCHAR(255),
+                        topic_time BIGINT,
                         modes TEXT
                     )",
                 )
@@ -320,19 +322,22 @@ pub mod mysql_impl {
         async fn get_channel_info(
             &self,
             channel_name: &str,
-        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
+        ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, Option<SystemTime>)>, Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
-                let row: Option<(String, i64, Option<String>, Option<String>)> = sqlx::query_as(
-                    "SELECT creator_nick, creation_time, topic, modes FROM channels WHERE channel_name = ?",
+                let row: Option<(String, i64, Option<String>, Option<String>, Option<String>, Option<i64>)> = sqlx::query_as(
+                    "SELECT creator_nick, creation_time, topic, modes, topic_setter, topic_time FROM channels WHERE channel_name = ?",
                 )
                 .bind(channel_name)
                 .fetch_optional(pool)
                 .await?;
 
-                if let Some((creator, timestamp, topic, modes)) = row {
+                if let Some((creator, timestamp, topic, modes, topic_setter, topic_time_secs)) = row {
                     let creation_time =
                         SystemTime::UNIX_EPOCH + Duration::from_secs(timestamp as u64);
-                    return Ok(Some((creator, creation_time, topic, modes)));
+                    let topic_time = topic_time_secs.map(|secs| 
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(secs as u64)
+                    );
+                    return Ok(Some((creator, creation_time, topic, modes, topic_setter, topic_time)));
                 }
             }
             Ok(None)
@@ -342,12 +347,20 @@ pub mod mysql_impl {
             &mut self,
             channel_name: &str,
             topic: Option<&str>,
+            topic_setter: Option<&str>,
+            topic_time: Option<SystemTime>,
             modes: Option<&str>,
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 let mut set_clauses = Vec::new();
                 if topic.is_some() {
                     set_clauses.push("topic = ?");
+                }
+                if topic_setter.is_some() {
+                    set_clauses.push("topic_setter = ?");
+                }
+                if topic_time.is_some() {
+                    set_clauses.push("topic_time = ?");
                 }
                 if modes.is_some() {
                     set_clauses.push("modes = ?");
@@ -361,6 +374,13 @@ pub mod mysql_impl {
                     let mut query = sqlx::query(&query_str);
                     if let Some(t) = topic {
                         query = query.bind(t);
+                    }
+                    if let Some(ts) = topic_setter {
+                        query = query.bind(ts);
+                    }
+                    if let Some(tt) = topic_time {
+                        let timestamp = tt.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
+                        query = query.bind(timestamp as i64);
                     }
                     if let Some(m) = modes {
                         query = query.bind(m);
@@ -526,6 +546,38 @@ pub mod mysql_impl {
                     .execute(pool)
                     .await?;
             }
+            Ok(())
+        }
+
+        async fn migrate_topic_fields(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+            if let Some(pool) = &self.pool {
+                // Check if topic_setter column exists
+                let check_query = "SELECT COUNT(*) FROM information_schema.columns 
+                                  WHERE table_name = 'channels' AND column_name = 'topic_setter'";
+                let count: i64 = sqlx::query_scalar(check_query)
+                    .fetch_one(pool)
+                    .await?;
+                
+                if count == 0 {
+                    sqlx::query("ALTER TABLE channels ADD COLUMN topic_setter VARCHAR(255)")
+                        .execute(pool)
+                        .await?;
+                }
+                
+                // Check if topic_time column exists
+                let check_query = "SELECT COUNT(*) FROM information_schema.columns 
+                                  WHERE table_name = 'channels' AND column_name = 'topic_time'";
+                let count: i64 = sqlx::query_scalar(check_query)
+                    .fetch_one(pool)
+                    .await?;
+                
+                if count == 0 {
+                    sqlx::query("ALTER TABLE channels ADD COLUMN topic_time BIGINT")
+                        .execute(pool)
+                        .await?;
+                }
+            }
+            
             Ok(())
         }
     }

@@ -283,6 +283,8 @@ impl ChannelDatabase for SQLiteChannelDatabase {
                     creator_nick TEXT NOT NULL,
                     creation_time INTEGER NOT NULL,
                     topic TEXT,
+                    topic_setter TEXT,
+                    topic_time INTEGER,
                     modes TEXT
                 )",
         ) {
@@ -314,10 +316,10 @@ impl ChannelDatabase for SQLiteChannelDatabase {
     async fn get_channel_info(
         &self,
         channel_name: &str,
-    ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>)>, Box<dyn Error + Send + Sync>> {
+    ) -> Result<Option<(String, SystemTime, Option<String>, Option<String>, Option<String>, Option<SystemTime>)>, Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let query =
-            "SELECT creator_nick, creation_time, topic, modes FROM channels WHERE channel_name = ?";
+            "SELECT creator_nick, creation_time, topic, modes, topic_setter, topic_time FROM channels WHERE channel_name = ?";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
@@ -333,7 +335,16 @@ impl ChannelDatabase for SQLiteChannelDatabase {
                     statement.read(2).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
                 let modes: Option<String> =
                     statement.read(3).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-                Ok(Some((creator_nick, creation_time, topic, modes)))
+                let topic_setter: Option<String> =
+                    statement.read(4).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                let topic_time_secs: Option<i64> =
+                    statement.read(5).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+                
+                let topic_time = topic_time_secs.map(|secs| 
+                    SystemTime::UNIX_EPOCH + std::time::Duration::from_secs(secs as u64)
+                );
+                
+                Ok(Some((creator_nick, creation_time, topic, modes, topic_setter, topic_time)))
             }
             Ok(sqlite::State::Done) => Ok(None),
             Err(e) => Err(Box::new(e) as Box<dyn Error + Send + Sync>),
@@ -344,12 +355,20 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         &mut self,
         channel_name: &str,
         topic: Option<&str>,
+        topic_setter: Option<&str>,
+        topic_time: Option<SystemTime>,
         modes: Option<&str>,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let mut updates = Vec::new();
         if topic.is_some() {
             updates.push("topic = ?");
+        }
+        if topic_setter.is_some() {
+            updates.push("topic_setter = ?");
+        }
+        if topic_time.is_some() {
+            updates.push("topic_time = ?");
         }
         if modes.is_some() {
             updates.push("modes = ?");
@@ -366,6 +385,18 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         let mut bind_index = 1;
         if let Some(t) = topic {
             statement.bind((bind_index, t)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            bind_index += 1;
+        }
+        if let Some(ts) = topic_setter {
+            statement.bind((bind_index, ts)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            bind_index += 1;
+        }
+        if let Some(tt) = topic_time {
+            let timestamp = tt
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .map_err(|_| "Failed to get UNIX timestamp for topic_time")?
+                .as_secs();
+            statement.bind((bind_index, timestamp as i64)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
             bind_index += 1;
         }
         if let Some(m) = modes {
@@ -523,5 +554,40 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
+    }
+
+    async fn migrate_topic_fields(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
+        let db_guard = self.connection.lock().unwrap();
+        
+        // Check if topic_setter column exists
+        let check_query = "PRAGMA table_info(channels)";
+        let mut statement = db_guard.prepare(check_query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        
+        let mut has_topic_setter = false;
+        let mut has_topic_time = false;
+        
+        while let Ok(sqlite::State::Row) = statement.next() {
+            let column_name: String = statement.read(1).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+            match column_name.as_str() {
+                "topic_setter" => has_topic_setter = true,
+                "topic_time" => has_topic_time = true,
+                _ => {}
+            }
+        }
+        
+        drop(statement);
+        
+        // Add columns if they don't exist
+        if !has_topic_setter {
+            db_guard.execute("ALTER TABLE channels ADD COLUMN topic_setter TEXT")
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        }
+        
+        if !has_topic_time {
+            db_guard.execute("ALTER TABLE channels ADD COLUMN topic_time INTEGER")
+                .map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        }
+        
+        Ok(())
     }
 }

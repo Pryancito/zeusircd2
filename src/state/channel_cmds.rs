@@ -428,10 +428,27 @@ impl super::MainState {
                                         }
                                     }
                                     
-                                    // Aplicar topic y modos almacenados en ChanServ si existen
+                                    // Apply topic and modes stored in ChanServ if they exist
                                     if let Some(topic) = &channel_info.2 {
                                         if chanobj.topic.is_none() {
-                                            chanobj.topic = Some(ChannelTopic::new(topic.clone()));
+                                            // Use topic_setter and topic_time from database if available
+                                            let topic_setter: String = channel_info.4.clone().unwrap_or_else(|| creator_nick.clone());
+                                            let topic_time = channel_info.5.map(|time| {
+                                                time.duration_since(SystemTime::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_secs()
+                                            }).unwrap_or_else(|| {
+                                                SystemTime::now()
+                                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_secs()
+                                            });
+                                            
+                                            chanobj.topic = Some(ChannelTopic {
+                                                topic: topic.clone(),
+                                                nick: topic_setter,
+                                                set_time: topic_time,
+                                            });
                                         }
                                     }
                                     
@@ -533,10 +550,27 @@ impl super::MainState {
                                         }
                                     }
                                     
-                                    // Aplicar topic y modos almacenados en ChanServ si existen
+                                    // Apply topic and modes stored in ChanServ if they exist
                                     if let Some(topic) = &channel_info.2 {
                                         if chanobj.topic.is_none() {
-                                            chanobj.topic = Some(ChannelTopic::new(topic.clone()));
+                                            // Use topic_setter and topic_time from database if available
+                                            let topic_setter: String = channel_info.4.clone().unwrap_or_else(|| creator_nick.clone());
+                                            let topic_time = channel_info.5.map(|time| {
+                                                time.duration_since(SystemTime::UNIX_EPOCH)
+                                                    .unwrap_or_default()
+                                                    .as_secs()
+                                            }).unwrap_or_else(|| {
+                                                SystemTime::now()
+                                                    .duration_since(SystemTime::UNIX_EPOCH)
+                                                    .unwrap()
+                                                    .as_secs()
+                                            });
+                                            
+                                            chanobj.topic = Some(ChannelTopic {
+                                                topic: topic.clone(),
+                                                nick: topic_setter,
+                                                set_time: topic_time,
+                                            });
                                         }
                                     }
                                     
@@ -597,6 +631,16 @@ impl super::MainState {
                                 client,
                                 channel: chname_str,
                                 topic: &topic.topic,
+                            },
+                        )
+                        .await?;
+                        self.feed_msg(
+                            &mut conn_state.stream,
+                            RplTopicWhoTime333 {
+                                client,
+                                channel: chname_str,
+                                nick: if !topic.nick.is_empty() { &topic.nick } else { "Unknown" },
+                                setat: topic.set_time,
                             },
                         )
                         .await?;
@@ -815,6 +859,17 @@ impl super::MainState {
                         topic.to_string(),
                         user_nick.clone(),
                     ));
+                    
+                    // Update topic in database if channel is registered
+                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
+                    {
+                        if let Some(db_arc) = &self.databases.chan_db {
+                            let mut db = db_arc.write().await;
+                            if let Ok(Some(_)) = db.get_channel_info(channel).await {
+                                let _ = db.update_channel_info(channel, Some(topic), Some(user_nick), Some(SystemTime::now()), None).await;
+                            }
+                        }
+                    }
                 } else {
                     chanobj.topic = None
                 }

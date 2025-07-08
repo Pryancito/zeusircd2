@@ -112,6 +112,18 @@ impl super::MainState {
                             self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic: Not set", client)).await?;
                         }
                         
+                        // Show topic setter and time if available
+                        if let Some(topic_setter) = &info.4 {
+                            if let Some(topic_time) = &info.5 {
+                                let topic_datetime = chrono::DateTime::from_timestamp(topic_time.duration_since(SystemTime::UNIX_EPOCH).unwrap_or_default().as_secs() as i64, 0)
+                                    .unwrap_or_default()
+                                    .format("%Y-%m-%d %H:%M:%S");
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic set by {} on {}", client, topic_setter, topic_datetime)).await?;
+                            } else {
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Topic set by {}", client, topic_setter)).await?;
+                            }
+                        }
+                        
                         // Show channel modes from database
                         let modos_str = match &info.3 {
                             Some(modos) if !modos.is_empty() => modos.as_str(),
@@ -171,7 +183,7 @@ impl super::MainState {
                     match action.as_str() {
                         "add" => {
                             if params.len() < 3 {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} {} <channel> add <nick>", client, subcommand, channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} <channel> add <nick>", client, subcommand)).await?;
                                 return Ok(());
                             }
                             let target_nick = params[2];
@@ -204,7 +216,7 @@ impl super::MainState {
                         }
                         "del" => {
                             if params.len() < 3 {
-                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} {} <channel> del <nick>", client, subcommand, channel)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Usage: /CS {} <channel> del <nick>", client, subcommand)).await?;
                                 return Ok(());
                             }
                             let target_nick = params[2];
@@ -334,28 +346,28 @@ impl super::MainState {
                             return Ok(());
                         }
                         
-                        // Cambiar el topic del canal
-                        db.update_channel_info(channel, Some(&new_topic), None).await?;
+                        // Change channel topic
+                        db.update_channel_info(channel, Some(&new_topic), Some(nick), Some(SystemTime::now()), None).await?;
                         
-                        // Notificar el cambio
+                        // Notify the change
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :The topic of the channel '{}' has been changed to: {}", client, channel, new_topic)).await?;
                         
-                        // Enviar el cambio de topic a todos los usuarios del canal
+                        // Send topic change to all users in the channel
                         let mut state = self.state.write().await;
                         if let Some(chanobj) = state.channels.get_mut(channel) {
-                            // Actualizar el topic en la lógica interna del IRCd
+                            // Update topic in internal IRCd logic
                             chanobj.topic = Some(ChannelTopic::new_with_nick(new_topic.clone(), nick.to_string()));
                             
                             let topic_msg = format!("TOPIC {} :{}", channel, new_topic);
-                            // Recolectar los nicks de usuarios para evitar el conflicto de préstamo
+                            // Collect user nicks to avoid borrowing conflict
                             let user_nicks: Vec<String> = chanobj.users.keys().cloned().collect();
-                            drop(state); // Liberar el préstamo mutable
+                            drop(state); // Release mutable borrow
                             
-                            // Ahora acceder a los usuarios por separado
+                            // Now access users separately
                             let state = self.state.read().await;
                             for user_nick in user_nicks {
                                 if let Some(user) = state.users.get(&user_nick) {
-                                    // Enviar el mensaje usando el sender del usuario
+                                    // Send message using user's sender
                                     let _ = user.send_msg_display("ChanServ", &topic_msg);
                                 }
                             }
@@ -416,7 +428,7 @@ impl super::MainState {
                         
                         // Si se solicita desactivar el mlock
                         if desactivar {
-                            db.update_channel_info(channel, None, Some("")).await?;
+                            db.update_channel_info(channel, None, None, None, Some("")).await?;
                             // Limpiar modos mlock en la lógica interna si el canal existe
                             let mut state = self.state.write().await;
                             if let Some(chanobj) = state.channels.get_mut(channel) {
@@ -427,7 +439,7 @@ impl super::MainState {
                             self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock of the channel '{}' has been deactivated.", client, channel)).await?;
                         } else {
                             // Actualizar el mlock en la base de datos
-                            db.update_channel_info(channel, None, Some(&modo_str)).await?;
+                            db.update_channel_info(channel, None, None, None, Some(&modo_str)).await?;
                             
                             // Aplicar los modos al canal si existe
                             let mut state = self.state.write().await;

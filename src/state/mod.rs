@@ -128,6 +128,9 @@ impl MainState {
             chan_db.connect(&db_config.url).await.map_err(|e| e.to_string())?;
             chan_db.create_table().await.map_err(|e| e.to_string())?;
             chan_db.create_access_table().await.map_err(|e| e.to_string())?;
+            
+            // Run migrations on concrete instance
+            chan_db.migrate_topic_fields().await.map_err(|e| e.to_string())?;
 
             Databases {
                 nick_db: Some(Arc::new(RwLock::new(nick_db))),
