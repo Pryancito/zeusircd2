@@ -217,14 +217,14 @@ impl MainState {
     }
 
     // try to register connection state - print error if too many connections.
-    pub(crate) fn register_conn_state(
+    pub(crate) async fn register_conn_state(
         &self,
         ip_addr: IpAddr,
         stream: DualTcpStream
     ) -> Option<ConnState> {
         // Check per-IP connection limit
         if let Some(max_per_ip) = self.config.max_connections_per_ip {
-            let mut ip_conns = self.connections_per_ip.blocking_write();
+            let mut ip_conns = self.connections_per_ip.write().await;
             let current_per_ip = ip_conns.get(&ip_addr).copied().unwrap_or(0);
             if current_per_ip >= max_per_ip {
                 error!("Too many connections from IP {} (max per IP: {})", ip_addr, max_per_ip);
@@ -241,7 +241,7 @@ impl MainState {
                 error!("Too many total connections (max: {})", max_conns);
                 // Decrement per-IP counter if we can't accept the connection
                 if self.config.max_connections_per_ip.is_some() {
-                    let mut ip_conns = self.connections_per_ip.blocking_write();
+                    let mut ip_conns = self.connections_per_ip.write().await;
                     if let Some(count) = ip_conns.get_mut(&ip_addr) {
                         *count = count.saturating_sub(1);
                         if *count == 0 {
@@ -591,7 +591,7 @@ impl MainState {
 
 // main process to handle commands from client.
 async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, addr: SocketAddr) {
-    if let Some(mut conn_state) = main_state.register_conn_state(addr.ip(), stream) {
+    if let Some(mut conn_state) = main_state.register_conn_state(addr.ip(), stream).await {
         #[cfg(feature = "dns_lookup")]
         if main_state.config.dns_lookup {
             let _ = main_state.feed_msg(
