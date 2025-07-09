@@ -954,7 +954,7 @@ impl super::MainState {
                             if chanobj.users.contains_key(&arg.to_string()) {
                                 match mchar {
                                     'o' => {
-                                        if if_op {
+                                        if if_op || if_oper {
                                             if mode_set {
                                                 set_modes_string.push('o');
                                                 set_mode_args.push(arg.to_string());
@@ -967,7 +967,7 @@ impl super::MainState {
                                         }
                                     }
                                     'v' => {
-                                        if if_half_op {
+                                        if if_half_op || if_oper {
                                             if mode_set {
                                                 set_modes_string.push('v');
                                                 set_mode_args.push(arg.to_string());
@@ -980,7 +980,7 @@ impl super::MainState {
                                         }
                                     }
                                     'h' => {
-                                        if if_op {
+                                        if if_op || if_oper {
                                             if mode_set {
                                                 set_modes_string.push('h');
                                                 set_mode_args.push(arg.to_string());
@@ -993,7 +993,7 @@ impl super::MainState {
                                         }
                                     }
                                     'q' => {
-                                        if chum.founder {
+                                        if chum.founder || if_oper {
                                             if mode_set {
                                                 set_modes_string.push('q');
                                                 set_mode_args.push(arg.to_string());
@@ -1006,7 +1006,7 @@ impl super::MainState {
                                         }
                                     }
                                     'a' => {
-                                        if chum.is_protected() {
+                                        if chum.is_protected() || if_oper {
                                             if mode_set {
                                                 set_modes_string.push('a');
                                                 set_mode_args.push(arg.to_string());
@@ -1033,7 +1033,7 @@ impl super::MainState {
                             }
                         }
                         'l' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.client_limit = if mode_set {
                                     let arg = margs_it.next().unwrap();
                                     set_modes_string.push('l');
@@ -1047,7 +1047,7 @@ impl super::MainState {
                             }
                         }
                         'k' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.key = if mode_set {
                                     let arg = margs_it.next().unwrap();
                                     set_modes_string.push('k');
@@ -1060,7 +1060,7 @@ impl super::MainState {
                             }
                         }
                         'i' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.invite_only = mode_set;
                                 if mode_set {
                                     set_modes_string.push('i');
@@ -1070,7 +1070,7 @@ impl super::MainState {
                             }
                         }
                         'm' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.moderated = mode_set;
                                 if mode_set {
                                     set_modes_string.push('m');
@@ -1080,7 +1080,7 @@ impl super::MainState {
                             }
                         }
                         't' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.protected_topic = mode_set;
                                 if mode_set {
                                     set_modes_string.push('t');
@@ -1090,7 +1090,7 @@ impl super::MainState {
                             }
                         }
                         'n' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.no_external_messages = mode_set;
                                 if mode_set {
                                     set_modes_string.push('n');
@@ -1100,7 +1100,7 @@ impl super::MainState {
                             }
                         }
                         's' => {
-                            if if_half_op {
+                            if if_half_op || if_oper {
                                 chanobj.modes.secret = mode_set;
                                 if mode_set {
                                     set_modes_string.push('s');
