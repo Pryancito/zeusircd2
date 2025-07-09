@@ -466,12 +466,18 @@ impl super::MainState {
         let mut set_mode_args: Vec<String> = Vec::new();
         let mut unset_mode_args: Vec<String> = Vec::new();
         if modes.is_empty() {
+            // Los modos de canal son hasta el primer espacio
+            let modes_full = chanobj.modes.to_string();
+            let modestring = modes_full
+                .split_whitespace()
+                .next()
+                .unwrap_or(&modes_full);
             self.feed_msg(
                 &mut conn_state.stream,
                 RplChannelModeIs324 {
                     client,
                     channel: target,
-                    modestring: &chanobj.modes.to_string(),
+                    modestring,
                 },
             )
             .await?;
