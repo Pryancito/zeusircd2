@@ -76,6 +76,8 @@ pub(crate) struct MainState {
     // key is oper name
     oper_config_idxs: HashMap<String, usize>,
     conns_count: Arc<AtomicUsize>,
+    // Track connections per IP
+    connections_per_ip: Arc<RwLock<HashMap<IpAddr, usize>>>,
     state: Arc<RwLock<VolatileState>>,
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     databases: Databases,
@@ -154,6 +156,7 @@ impl MainState {
         };
         let now = Local::now();
         let conns_count = Arc::new(AtomicUsize::new(0));
+        let connections_per_ip = Arc::new(RwLock::new(HashMap::new()));
         let state = MainState {
             config: config.clone(),
             user_config_idxs,
@@ -164,6 +167,7 @@ impl MainState {
             #[cfg(feature = "amqp")]
             serv_comm,
             conns_count,
+            connections_per_ip,
             created: now.to_rfc2822(),
             created_time: now,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
@@ -218,25 +222,59 @@ impl MainState {
         ip_addr: IpAddr,
         stream: DualTcpStream
     ) -> Option<ConnState> {
-        // Primero verificamos si podemos aceptar más conexiones
+        // Check per-IP connection limit
+        if let Some(max_per_ip) = self.config.max_connections_per_ip {
+            let mut ip_conns = self.connections_per_ip.blocking_write();
+            let current_per_ip = ip_conns.get(&ip_addr).copied().unwrap_or(0);
+            if current_per_ip >= max_per_ip {
+                error!("Too many connections from IP {} (max per IP: {})", ip_addr, max_per_ip);
+                return None;
+            }
+            *ip_conns.entry(ip_addr).or_insert(0) += 1;
+            drop(ip_conns);
+        }
+        
+        // Check global connection limit
         if let Some(max_conns) = self.config.max_connections {
             let current = self.conns_count.load(Ordering::SeqCst);
             if current >= max_conns {
-                error!("Too many connections for IP {} (max: {})", ip_addr, max_conns);
+                error!("Too many total connections (max: {})", max_conns);
+                // Decrement per-IP counter if we can't accept the connection
+                if self.config.max_connections_per_ip.is_some() {
+                    let mut ip_conns = self.connections_per_ip.blocking_write();
+                    if let Some(count) = ip_conns.get_mut(&ip_addr) {
+                        *count = count.saturating_sub(1);
+                        if *count == 0 {
+                            ip_conns.remove(&ip_addr);
+                        }
+                    }
+                }
                 return None;
             } else {
                 let current = self.conns_count.fetch_add(1, Ordering::SeqCst);
-                info!("Nueva conexión desde {} (total: {})", ip_addr, current);
+                info!("Nueva conexión desde {} (total: {})", ip_addr, current + 1);
             }
         }
-        // Creamos el estado de la conexión
-        Some(ConnState::new(ip_addr, stream, self.conns_count.clone()))
+        
+        // Create connection state
+        Some(ConnState::new(ip_addr, stream, self.conns_count.clone(), self.connections_per_ip.clone()))
     }
 
     pub(crate) async fn remove_user(&self, conn_state: &ConnState) {
         if let Some(ref nick) = conn_state.user_state.nick {
             let mut state = self.state.write().await;
             state.remove_user(nick);
+        }
+        
+        // Decrement per-IP connection counter
+        if self.config.max_connections_per_ip.is_some() {
+            let mut ip_conns = self.connections_per_ip.write().await;
+            if let Some(count) = ip_conns.get_mut(&conn_state.user_state.ip_addr) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    ip_conns.remove(&conn_state.user_state.ip_addr);
+                }
+            }
         }
     }
 
@@ -647,6 +685,17 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
 
         // IMPORTANTE: Decrementar el contador de conexiones activas
         main_state.conns_count.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+        
+        // Decrement per-IP connection counter
+        if main_state.config.max_connections_per_ip.is_some() {
+            let mut ip_conns = main_state.connections_per_ip.write().await;
+            if let Some(count) = ip_conns.get_mut(&conn_state.user_state.ip_addr) {
+                *count = count.saturating_sub(1);
+                if *count == 0 {
+                    ip_conns.remove(&conn_state.user_state.ip_addr);
+                }
+            }
+        }
     }
 }
 

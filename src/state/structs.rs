@@ -31,6 +31,7 @@ use tokio::sync::oneshot;
 use tokio::time;
 use tracing::*;
 use sha2::{Sha256, Digest};
+use tokio::sync::RwLock;
 
 use crate::command::*;
 use crate::config::*;
@@ -993,6 +994,7 @@ impl ConnState {
         ip_addr: IpAddr,
         stream: DualTcpStream,
         _conns_count: Arc<AtomicUsize>,
+        _connections_per_ip: Arc<RwLock<HashMap<IpAddr, usize>>>,
     ) -> ConnState {
         let (sender, receiver) = unbounded_channel();
         let (ping_sender, ping_receiver) = unbounded_channel();

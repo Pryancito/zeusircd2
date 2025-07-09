@@ -371,6 +371,7 @@ pub(crate) struct MainConfig {
     #[validate(custom(function = "validate_password_hash"))]
     pub(crate) password: Option<String>,
     pub(crate) max_connections: Option<usize>,
+    pub(crate) max_connections_per_ip: Option<usize>,
     pub(crate) max_joins: Option<usize>,
     pub(crate) ping_timeout: u64,
     pub(crate) pong_timeout: u64,
@@ -530,6 +531,7 @@ impl Default for MainConfig {
             password: None,
             motd: "Hello, world!".to_string(),
             max_connections: None,
+            max_connections_per_ip: None,
             max_joins: None,
             ping_timeout: 120,
             pong_timeout: 20,

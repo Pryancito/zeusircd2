@@ -13,6 +13,8 @@ info = "This is IRC server"
 network = "IRCInetwork"
 # Maximal number of acceptable connections.
 max_connections = 4000
+# Maximal number of connections per IP
+max_connections_per_ip = 5
 # Maximal number of channels that user can join.
 max_joins = 100
 # Ping timeout. Maximal time between consecutive PING's in secods.
