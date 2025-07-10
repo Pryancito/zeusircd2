@@ -154,6 +154,7 @@ pub(crate) struct ChannelModes {
     pub(crate) protected_topic: bool,
     pub(crate) no_external_messages: bool,
     pub(crate) only_ircops: bool,
+    pub(crate) registered: bool,
 }
 
 impl ChannelModes {
@@ -250,6 +251,9 @@ impl fmt::Display for ChannelModes {
         }
         if self.no_external_messages {
             s.push('n');
+        }
+        if self.registered {
+            s.push('r');
         }
         if self.key.is_some() {
             s.push('k');
@@ -661,6 +665,7 @@ mod test {
                 protected_topic: true,
                 no_external_messages: true,
                 only_ircops: false,
+                registered: false,
             }
             .to_string()
         );
@@ -682,6 +687,7 @@ mod test {
             protected_topic: true,
             no_external_messages: false,
             only_ircops: false,
+            registered: false,
         }
         .to_string();
         assert!(
@@ -706,6 +712,7 @@ mod test {
             protected_topic: false,
             no_external_messages: true,
             only_ircops: false,
+            registered: false,
         }
         .to_string();
         assert!(
@@ -730,6 +737,7 @@ mod test {
             protected_topic: false,
             no_external_messages: true,
             only_ircops: false,
+            registered: false,
         }
         .to_string();
         assert!(

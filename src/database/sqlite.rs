@@ -305,7 +305,7 @@ impl ChannelDatabase for SQLiteChannelDatabase {
             .map_err(|_| "Failed to get UNIX timestamp")?
             .as_secs();
         let query =
-            "INSERT INTO channels (channel_name, creator_nick, creation_time) VALUES (?, ?, ?)";
+            "INSERT INTO channels (channel_name, creator_nick, creation_time, modes) VALUES (?, ?, ?, '+r')";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, channel_name)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, creator_nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;

@@ -308,7 +308,7 @@ pub mod mysql_impl {
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
                 sqlx::query(
-                    "INSERT INTO channels (channel_name, creator_nick, creation_time) VALUES (?, ?, ?)",
+                    "INSERT INTO channels (channel_name, creator_nick, creation_time, modes) VALUES (?, ?, ?, '+r')",
                 )
                 .bind(channel_name)
                 .bind(creator_nick)

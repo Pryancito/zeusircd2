@@ -52,6 +52,22 @@ impl super::MainState {
                     }
 
                     db.add_channel(channel, nick, SystemTime::now()).await?;
+                    
+                    // Establecer automáticamente el modo +r para canales registrados
+                    let mut state = self.state.write().await;
+                    if let Some(chanobj) = state.channels.get_mut(channel) {
+                        chanobj.modes.registered = true;
+                        
+                        // Notificar a todos los usuarios del canal sobre el cambio de modo
+                        let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                        for nick in nicks {
+                            if let Some(user) = state.users.get_mut(&nick) {
+                                let mensaje = format!("MODE {} +r", channel);
+                                let _ = user.send_msg_display(&self.config.name, &mensaje);
+                            }
+                        }
+                    }
+                    
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' has been registered.", client, channel)).await?;
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Database is not configured.", client)).await?;
@@ -77,6 +93,24 @@ impl super::MainState {
                         }
                         
                         db.delete_channel(channel).await?;
+                        
+                        // Quitar automáticamente el modo +r cuando se elimina el canal
+                        let mut state = self.state.write().await;
+                        if let Some(chanobj) = state.channels.get_mut(channel) {
+                            if chanobj.modes.registered {
+                                chanobj.modes.registered = false;
+                                
+                                // Notificar a todos los usuarios del canal sobre el cambio de modo
+                                let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                for nick in nicks {
+                                    if let Some(user) = state.users.get_mut(&nick) {
+                                        let mensaje = format!("MODE {} -r", channel);
+                                        let _ = user.send_msg_display(&self.config.name, &mensaje);
+                                    }
+                                }
+                            }
+                        }
+                        
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' has been deleted.", client, channel)).await?;
                     } else {
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Channel '{}' is not registered.", client, channel)).await?;
@@ -396,10 +430,17 @@ impl super::MainState {
                 let desactivar = modo_str.eq_ignore_ascii_case("off");
 
                 if !desactivar && !self.validate_mlock_modes(modo_str) {
-                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Invalid modes for mlock. Allowed modes: +ntklmiO.\nThe +O mode restricts the channel only to IRCops.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Invalid modes for mlock. Allowed modes: +ntklmirO. The +O mode restricts the channel only to IRCops. The +r mode marks the channel as registered.", client)).await?;
                     return Ok(());
                 }
-                
+
+                // Añadir a los modos permitidos el modo +r si no esta presente
+                let modo_str = if !modo_str.contains('r') {
+                    format!("+r{}", &modo_str[1..])
+                } else {
+                    modo_str.to_string()
+                };
+
                 // Verificar que el canal existe
                 if let Some(db_arc) = &self.databases.chan_db {
                     let mut db = db_arc.write().await;
@@ -450,7 +491,7 @@ impl super::MainState {
                             drop(state);
                             
                             // Notificar el cambio
-                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock of the channel '{}' has been set to: {}", client, channel, args)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :MLock of the channel '{}' has been set to: {}", client, channel, modo_str)).await?;
                         }
                         
                     } else {
@@ -540,7 +581,7 @@ impl super::MainState {
         }
         
         // Modos permitidos para mlock: n, t, k, l, m, i, O
-        let allowed_modes = ['n', 't', 'k', 'l', 'm', 'i', 'O'];
+        let allowed_modes = ['n', 't', 'k', 'l', 'm', 'i', 'O', 'r'];
         
         // Verificar cada carácter después del signo
         for c in modes[1..].chars() {
@@ -617,6 +658,10 @@ impl super::MainState {
                                 channel_modes.only_ircops = true;
                                 chars.next();
                             }
+                            'r' => {
+                                channel_modes.registered = true;
+                                chars.next();
+                            }
                             _ => {
                                 // Modo desconocido, saltarlo
                                 chars.next();
@@ -658,6 +703,10 @@ impl super::MainState {
                             }
                             'O' => {
                                 channel_modes.only_ircops = false;
+                                chars.next();
+                            }
+                            'r' => {
+                                channel_modes.registered = false;
                                 chars.next();
                             }
                             _ => {

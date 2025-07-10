@@ -556,6 +556,19 @@ impl super::MainState {
                                 .await?;
                             }
                         }
+                        'r' => {
+                            // El modo +r solo puede ser manipulado por el IRCd
+                            if !if_oper {
+                                self.feed_msg(
+                                    &mut conn_state.stream,
+                                    ErrChanOpPrivsNeeded482 {
+                                        client,
+                                        channel: target,
+                                    },
+                                )
+                                .await?;
+                            }
+                        }
                         _ => (),
                     }
 
@@ -1106,6 +1119,17 @@ impl super::MainState {
                                     set_modes_string.push('s');
                                 } else {
                                     unset_modes_string.push('s');
+                                }
+                            }
+                        }
+                        'r' => {
+                            // El modo +r solo puede ser manipulado por IRCops
+                            if if_oper {
+                                chanobj.modes.registered = mode_set;
+                                if mode_set {
+                                    set_modes_string.push('r');
+                                } else {
+                                    unset_modes_string.push('r');
                                 }
                             }
                         }

@@ -150,6 +150,8 @@ protected_topic = false
 no_external_messages = true
 # If true only ircops can enter at channel.
 only_ircops = false
+# If true the channel is registered with chanserv.
+registered = false
 
 # Configuración de servidores AMQP
 [amqp]

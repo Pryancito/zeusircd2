@@ -531,7 +531,7 @@ pub(crate) fn validate_channelmodes<'a>(
                             });
                         }
                     }
-                    'i' | 'm' | 't' | 'n' | 's' => {}
+                    'i' | 'm' | 't' | 'n' | 's' | 'r' => {}
                     c => {
                         return Err(UnknownMode(param_idx, c, target.to_string()));
                     }
