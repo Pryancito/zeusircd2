@@ -221,8 +221,9 @@ impl super::MainState {
                                 return Ok(());
                             }
                             let target_nick = params[2];
-                            
-                            // Verificar si el nick tiene noaccess habilitado
+
+                            // Solo permitir añadir usuarios registrados con NickServ
+                            let mut registrado = false;
                             if let Some(nick_db_arc) = &self.databases.nick_db {
                                 let nick_db = nick_db_arc.read().await;
                                 if let Ok(Some((_user, _registration_date, _email, _url, _vhost, _last_vhost, noaccess, _noop, _showmail))) = nick_db.get_nick_info(target_nick).await {
@@ -230,9 +231,14 @@ impl super::MainState {
                                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :Cannot add {} to access list. User has noaccess mode enabled.", client, target_nick)).await?;
                                         return Ok(());
                                     }
+                                    registrado = true;
                                 }
                             }
-                            
+                            if !registrado {
+                                self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {} :You can only add users registered with NickServ to the access list.", client)).await?;
+                                return Ok(());
+                            }
+
                             // Check if access already exists
                             if let Some(existing) = db.get_channel_access(channel, target_nick).await? {
                                 if existing.0 == subcommand.to_lowercase() {
