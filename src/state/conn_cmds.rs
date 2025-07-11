@@ -531,13 +531,8 @@ impl super::MainState {
                 let client = conn_state.user_state.client_name();
                 self.feed_msg(
                     &mut conn_state.stream,
-                    format!(
-                        "MODE {} :{}",
-                        client,
-                        user_modes
-                    ),
-                )
-                .await?;
+                    format!("MODE {} :{}", client, user_modes)
+                ).await?;
 
                 // run ping waker for this connection
                 conn_state.run_ping_waker(&self.config);
