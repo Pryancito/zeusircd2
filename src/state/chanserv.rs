@@ -440,11 +440,20 @@ impl super::MainState {
                     return Ok(());
                 }
 
-                // Añadir a los modos permitidos el modo +r si no esta presente
-                let modo_str = if !modo_str.contains('r') {
-                    format!("+r{}", &modo_str[1..])
+                // Añadir a los modos permitidos el modo +r si no está presente, tanto en modo_str como en args
+                let (modo_str, args) = if !modo_str.contains('r') {
+                    let nuevo_modo_str = format!("+r{}", &modo_str[1..]);
+                    let mut args_split = args.split_whitespace();
+                    let _ = args_split.next(); // saltar el primer argumento (modo_str original)
+                    let resto_args: Vec<&str> = args_split.collect();
+                    let nuevo_args = if resto_args.is_empty() {
+                        nuevo_modo_str.clone()
+                    } else {
+                        format!("{} {}", nuevo_modo_str, resto_args.join(" "))
+                    };
+                    (nuevo_modo_str, nuevo_args)
                 } else {
-                    modo_str.to_string()
+                    (modo_str.to_string(), args.clone())
                 };
 
                 // Verificar que el canal existe

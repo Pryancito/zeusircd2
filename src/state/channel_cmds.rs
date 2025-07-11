@@ -23,6 +23,11 @@ use std::error::Error;
 use std::ops::DerefMut;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+// Función para normalizar nombres de canales (insensible a mayúsculas/minúsculas)
+fn normalize_channel_name(channel: &str) -> String {
+    channel.to_lowercase()
+}
+
 impl super::MainState {
     pub(super) async fn process_join<'a>(
         &self,
@@ -60,7 +65,7 @@ impl super::MainState {
                 return Err("Usuario no encontrado en el estado".into());
             };
             for (i, chname_str) in channels.iter().enumerate() {
-                let chname = chname_str.to_string();
+                let chname = normalize_channel_name(chname_str);
                 let (join, create) = if let Some(channel) = state.channels.get(&chname) {
                     // if already created
                     let do_join = if let Some(key) = &channel.modes.key {
@@ -364,7 +369,7 @@ impl super::MainState {
 
             // insert create channel or add user to channel
             for ((join, create), chname_str) in joined_created.iter().zip(channels.iter()) {
-                let chname = chname_str.to_string();
+                let chname = normalize_channel_name(chname_str);
 
                 if *join {
                     user.channels.insert(chname.clone());
@@ -737,7 +742,8 @@ impl super::MainState {
         let mut something_done = false;
 
         for channel in &channels {
-            if let Some(chanobj) = state.channels.get_mut(channel.to_owned()) {
+            let normalized_channel = normalize_channel_name(channel);
+            if let Some(chanobj) = state.channels.get_mut(&normalized_channel) {
                 // if user in channel
                 let do_it = if chanobj.users.contains_key(&user_nick) {
                     something_done = true;
@@ -776,7 +782,7 @@ impl super::MainState {
 
                 // remove user from channel
                 if do_it {
-                    state.remove_user_from_channel(channel, &user_nick);
+                    state.remove_user_from_channel(&normalized_channel, &user_nick);
                     removed_from.push(true);
                 }
             } else {
@@ -815,9 +821,10 @@ impl super::MainState {
             // if change topic
             let mut state = self.state.write().await;
             let user_nick = conn_state.user_state.nick.as_ref().unwrap();
+            let normalized_channel = normalize_channel_name(channel);
 
             // if channel exists
-            let do_change_topic = if let Some(chanobj) = state.channels.get(channel) {
+            let do_change_topic = if let Some(chanobj) = state.channels.get(&normalized_channel) {
                 // if user on channel
                 if chanobj.users.contains_key(user_nick) {
                     // if channel topic is not protected otherwise use should be at least
@@ -853,7 +860,7 @@ impl super::MainState {
 
             if do_change_topic {
                 // change topic
-                let chanobj = state.channels.get_mut(channel).unwrap();
+                let chanobj = state.channels.get_mut(&normalized_channel).unwrap();
                 if !topic.is_empty() {
                     chanobj.topic = Some(ChannelTopic::new_with_nick(
                         topic.to_string(),
@@ -865,8 +872,8 @@ impl super::MainState {
                     {
                         if let Some(db_arc) = &self.databases.chan_db {
                             let mut db = db_arc.write().await;
-                            if let Ok(Some(_)) = db.get_channel_info(channel).await {
-                                let _ = db.update_channel_info(channel, Some(topic), Some(user_nick), Some(SystemTime::now()), None).await;
+                            if let Ok(Some(_)) = db.get_channel_info(&normalized_channel).await {
+                                let _ = db.update_channel_info(&normalized_channel, Some(topic), Some(user_nick), Some(SystemTime::now()), None).await;
                             }
                         }
                     }
@@ -876,7 +883,7 @@ impl super::MainState {
             }
             if do_change_topic {
                 // send message about to all users in channel.
-                let chanobj = state.channels.get(channel).unwrap();
+                let chanobj = state.channels.get(&normalized_channel).unwrap();
                 for cu in chanobj.users.keys() {
                     state
                         .users
@@ -888,7 +895,8 @@ impl super::MainState {
         } else {
             // read topic
             let state = self.state.read().await;
-            if let Some(chanobj) = state.channels.get(channel) {
+            let normalized_channel = normalize_channel_name(channel);
+            if let Some(chanobj) = state.channels.get(&normalized_channel) {
                 let user_nick = conn_state.user_state.nick.as_ref().unwrap();
 
                 if chanobj.users.contains_key(user_nick) {
@@ -1016,7 +1024,8 @@ impl super::MainState {
         if !channels.is_empty() {
             // send names with EndOfNames
             for c in channels {
-                if let Some(channel) = state.channels.get(c) {
+                let normalized_channel = normalize_channel_name(c);
+                if let Some(channel) = state.channels.get(&normalized_channel) {
                     self.send_names_from_channel(conn_state, c, channel, &state.users, true)
                         .await?;
                 } else {
@@ -1074,9 +1083,10 @@ impl super::MainState {
             if !channels.is_empty() {
                 // send channels that are public (not secret).
                 for (chname, ch) in channels.iter().filter_map(|chname| {
+                    let normalized_chname = normalize_channel_name(chname);
                     state
                         .channels
-                        .get(&chname.to_string())
+                        .get(&normalized_chname)
                         .filter(|ch| !ch.modes.secret)
                         .map(|ch| (chname, ch))
                 }) {
@@ -1131,7 +1141,8 @@ impl super::MainState {
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let client = conn_state.user_state.client_name();
 
-        let do_invite = if let Some(chanobj) = state.channels.get(channel) {
+        let normalized_channel = normalize_channel_name(channel);
+        let do_invite = if let Some(chanobj) = state.channels.get(&normalized_channel) {
             if chanobj.users.contains_key(user_nick) {
                 let do_invite2 = if chanobj.modes.invite_only {
                     // only operator can invite into channel if channel is invite_only.
@@ -1186,7 +1197,7 @@ impl super::MainState {
         if do_invite {
             // check user
             if let Some(invited) = state.users.get_mut(nickname) {
-                invited.invited_to.insert(channel.to_string());
+                invited.invited_to.insert(normalized_channel);
                 self.feed_msg(
                     &mut conn_state.stream,
                     RplInviting341 {
@@ -1225,7 +1236,8 @@ impl super::MainState {
 
         let mut kicked = vec![];
 
-        if let Some(chanobj) = state.channels.get(channel) {
+        let normalized_channel = normalize_channel_name(channel);
+        if let Some(chanobj) = state.channels.get(&normalized_channel) {
             // if user on channel
             if chanobj.users.contains_key(user_nick) {
                 let user_chum = chanobj.users.get(user_nick).unwrap();
@@ -1283,9 +1295,9 @@ impl super::MainState {
         {
             // kick users
             for ku in &kicked {
-                state.remove_user_from_channel(channel, ku);
+                state.remove_user_from_channel(&normalized_channel, ku);
             }
-            let chanobj = state.channels.get(channel).unwrap();
+            let chanobj = state.channels.get(&normalized_channel).unwrap();
             for ku in &kicked {
                 let kick_msg = format!("KICK {} {} :{}", channel, ku, comment.unwrap_or("Kicked"));
                 for nick in chanobj.users.keys() {

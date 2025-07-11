@@ -596,7 +596,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
         if main_state.config.dns_lookup {
             let _ = main_state.feed_msg(
                 &mut conn_state.stream,
-                "NOTICE IP_LOOKUP :*** Looking up hostname.",
+                "NOTICE IP_LOOKUP :*** Looking up your hostname.",
             )
             .await;
             conn_state.run_dns_lookup();
@@ -614,12 +614,6 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                         if let Some(nick) = &conn_state.user_state.nick {
                             let mut state = main_state.state.write().await;
                             if let Some(user) = state.users.get_mut(nick) {
-                                if conn_state.is_secure() {
-                                    user.modes.secure = true;
-                                }
-                                if conn_state.is_websocket() {
-                                    user.modes.websocket = true;
-                                }
                                 user.source = format!("{}!{}@{}",
                                     nick, user.name, user.cloack.clone());
                                 conn_state.user_state.source = user.source.clone();
@@ -1170,13 +1164,13 @@ mod test {
                     env!("CARGO_PKG_NAME"),
                     "-",
                     env!("CARGO_PKG_VERSION"),
-                    " Oiorw IabehiklmnopqstvB"
+                    " OiorwWzx IabehiklmnopqrstvBO"
                 ),
                 line_stream.next().await.unwrap().unwrap()
             );
             assert_eq!(
                 ":irc.irc 005 mati AWAYLEN=1000 CASEMAPPING=ascii \
-                    CHANMODES=IabehiklmnopqstvB CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
+                    CHANMODES=IabehiklmnopqrstvBO CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
                     HOSTLEN=1000 INVEX=I KEYLEN=1000 :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()

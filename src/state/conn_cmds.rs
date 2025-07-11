@@ -107,7 +107,7 @@ static SUPPORT_TOKEN_STRING_VALUE: [SupportTokenStringValue; 9] = [
     },
     SupportTokenStringValue {
         name: "CHANMODES",
-        value: "IabehiklmnopqstvB",
+        value: "IabehiklmnopqrstvBO",
     },
     SupportTokenStringValue {
         name: "CHANTYPES",
@@ -421,20 +421,18 @@ impl super::MainState {
                     let user_state = &mut conn_state.user_state;
                     user_state.registered = registered;
                     let mut state = self.state.write().await;
-                    #[cfg(any(feature = "sqlite", feature = "mysql"))]
-                        let mut user = User::new(
-                            &self.config,
-                            user_state,
-                            conn_state.sender.take().unwrap(),
-                            conn_state.quit_sender.take().unwrap(),
-                        );
-                    #[cfg(not(any(feature = "sqlite", feature = "mysql")))]
-                        let user = User::new(
-                            &self.config,
-                            user_state,
-                            conn_state.sender.take().unwrap(),
-                            conn_state.quit_sender.take().unwrap(),
-                        );
+                    let mut user = User::new(
+                        &self.config,
+                        user_state,
+                        conn_state.sender.take().unwrap(),
+                        conn_state.quit_sender.take().unwrap(),
+                    );
+                    if conn_state.is_secure() {
+                        user.modes.secure = true;
+                    }
+                    if conn_state.is_websocket() {
+                        user.modes.websocket = true;
+                    }
                     // Aplicar vhost si está configurado
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     {
@@ -516,7 +514,7 @@ impl super::MainState {
                                 env!("CARGO_PKG_VERSION")
                             ),
                             avail_user_modes: "OiorwWzx",
-                            avail_chmodes: "IabehiklmnopqstvB",
+                            avail_chmodes: "IabehiklmnopqrstvBO",
                             avail_chmodes_with_params: None,
                         },
                     )
@@ -533,10 +531,11 @@ impl super::MainState {
                 let client = conn_state.user_state.client_name();
                 self.feed_msg(
                     &mut conn_state.stream,
-                    RplUModeIs221 {
+                    format!(
+                        "MODE {} :{}",
                         client,
-                        user_modes: &user_modes,
-                    },
+                        user_modes
+                    ),
                 )
                 .await?;
 
