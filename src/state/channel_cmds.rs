@@ -133,8 +133,8 @@ impl super::MainState {
                                                         )
                                                         .await?;
                                                         return Ok(());
-                    } else {
-                        true
+                                                    } else {
+                                                        true
                                                     }
                                                 } else {
                                                     // No se pudo extraer la clave, permitir entrada

@@ -833,7 +833,7 @@ async fn handle_websocket_connection(
             let ssl = Ssl::new(acceptor.context()).map_err(|e| e.to_string())?;
             let mut tls_stream = SslStream::new(ssl, stream).map_err(|e| e.to_string())?;
             use std::pin::Pin;
-            Pin::new(&mut tls_stream).accept().await.map_err(|e| e.to_string())?;
+            let _ = timeout(Duration::from_secs(10), Pin::new(&mut tls_stream).accept()).await.map_err(|e| e.to_string())?;
             
             // Configurar el handshake con los protocolos soportados
             return match timeout(Duration::from_secs(10), tokio_tungstenite::accept_async(tls_stream)).await {
