@@ -22,6 +22,7 @@ use std::collections::HashMap;
 use std::error::Error;
 use std::ops::DerefMut;
 use std::time::{SystemTime, UNIX_EPOCH};
+use unicase::UniCase;
 
 impl super::MainState {
     pub(super) async fn process_join<'a>(
@@ -42,7 +43,7 @@ impl super::MainState {
         };
         
         // Verificar que el usuario exista en el estado
-        let user_joined = if let Some(user) = state.users.get(&user_nick) {
+        let user_joined = if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&user_nick)) {
             user.channels.len()
         } else {
             return Err("Usuario no encontrado en el estado".into());
@@ -54,14 +55,14 @@ impl super::MainState {
 
         {
             let client = conn_state.user_state.client_name();
-            let user = if let Some(user) = state.users.get_mut(user_nick.as_str()) {
+            let user = if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(user_nick.as_str())) {
                 user
             } else {
                 return Err("Usuario no encontrado en el estado".into());
             };
             for (i, chname_str) in channels.iter().enumerate() {
                 let chname = chname_str.to_string();
-                let (join, create) = if let Some(channel) = state.channels.get(&chname) {
+                let (join, create) = if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(&chname)) {
                     // if already created
                     let do_join = if let Some(key) = &channel.modes.key {
                         if let Some(ref keys) = keys_opt {
@@ -238,7 +239,7 @@ impl super::MainState {
                         }
                     };
                     // check whether user is not alrady joined
-                    let do_join = do_join && !channel.users.contains_key(&user_nick);
+                    let do_join = do_join && !channel.users.contains_key(&crate::state::structs::to_unicase(&user_nick));
 
                     // Verificar modo +O (solo IRCops)
                     let do_join = if channel.modes.only_ircops {
@@ -376,7 +377,7 @@ impl super::MainState {
                         );
                         state
                             .channels
-                            .insert(chname.clone(), Channel::new_on_user_join(user_nick.clone()));
+                            .insert(crate::state::structs::to_unicase(&chname), Channel::new_on_user_join(user_nick.clone()));
                         
                         // Verificar si el canal está registrado y aplicar modos de ChanServ (para canales recién creados)
                         #[cfg(any(feature = "sqlite", feature = "mysql"))]
@@ -385,8 +386,8 @@ impl super::MainState {
                                 if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
                                     // El canal está registrado
                                     let creator_nick = &channel_info.0; // El primer elemento es el creador
-                                    let chanobj = state.channels.get_mut(&chname).unwrap();
-                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    let chanobj = state.channels.get_mut(&crate::state::structs::to_unicase(&chname)).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                                     
                                     // Verificar acceso de ChanServ para asignar modos
                                     if let Ok(Some((access_level, _, _))) = db_arc.read().await.get_channel_access(&chname, &user_nick).await {
@@ -459,8 +460,8 @@ impl super::MainState {
                                     }
                                 } else {
                                     // El canal NO está registrado - asignar +q al creador
-                                    let chanobj = state.channels.get_mut(&chname).unwrap();
-                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    let chanobj = state.channels.get_mut(&crate::state::structs::to_unicase(&chname)).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                                     user_chum.founder = true;
                                     let mut founders = chanobj.modes.founders.take().unwrap_or_default();
                                     founders.insert(user_nick.clone());
@@ -481,7 +482,7 @@ impl super::MainState {
                     } else {
                         state
                             .channels
-                            .get_mut(&chname)
+                            .get_mut(&crate::state::structs::to_unicase(&chname))
                             .unwrap()
                             .add_user(&user_nick);
                         
@@ -493,8 +494,8 @@ impl super::MainState {
                                 if let Ok(Some(channel_info)) = db_arc.read().await.get_channel_info(&chname).await {
                                     // El canal está registrado
                                     let creator_nick = &channel_info.0; // El primer elemento es el creador
-                                    let chanobj = state.channels.get_mut(&chname).unwrap();
-                                    let user_chum = chanobj.users.get_mut(&user_nick).unwrap();
+                                    let chanobj = state.channels.get_mut(&crate::state::structs::to_unicase(&chname)).unwrap();
+                                    let user_chum = chanobj.users.get_mut(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                                     
                                     // Verificar si el usuario tiene la opción noop habilitada
                                     let has_noop = if let Some(nick_db_arc) = &self.databases.nick_db {
@@ -598,7 +599,7 @@ impl super::MainState {
         {
             for ((join, _), chname_str) in joined_created.iter().zip(channels.iter()) {
                 if *join {
-                    let chanobj = state.channels.get(&chname_str.to_string()).unwrap();
+                    let chanobj = state.channels.get(&crate::state::structs::to_unicase(&chname_str.to_string())).unwrap();
                     let mut join_msg = "JOIN ".to_string() + chname_str;
                     
                     // Add account if extended-join is enabled and account is provided
@@ -612,7 +613,7 @@ impl super::MainState {
                     }
                     
                     let client = conn_state.user_state.client_name();
-                    let user = state.users.get(&user_nick).unwrap();
+                    let user = state.users.get(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                     let source = if user.modes.cloacked {
                         format!("{}!~{}@{}", user_nick, user.name, user.cloack)
                     } else {
@@ -654,7 +655,7 @@ impl super::MainState {
                     )
                     .await?;
 
-                    let user_chum = chanobj.users.get(&user_nick).unwrap();
+                    let user_chum = chanobj.users.get(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                     let mut arg = Vec::new();
                     if user_chum.founder {
                         arg.push("q");
@@ -669,8 +670,8 @@ impl super::MainState {
                     }
                     // send message to other users in channel
                     for nick in chanobj.users.keys() {
-                        if nick != user_nick.as_str() {
-                            state.users.get(&nick.clone()).unwrap().send_msg_display(
+                        if *nick != UniCase::new(user_nick.as_str()) {
+                            state.users.get(&crate::state::structs::to_unicase(&nick.clone())).unwrap().send_msg_display(
                                 &source,
                                 join_msg.as_str(),
                             )?;
@@ -678,7 +679,7 @@ impl super::MainState {
                         for mode in &arg {
                             let msg = format!("MODE {} +{} {}",
                                 chname_str, mode, user_nick);
-                            state.users.get(&nick.clone()).unwrap().send_msg_display(
+                            state.users.get(&crate::state::structs::to_unicase(&nick.clone())).unwrap().send_msg_display(
                                 &self.config.name,
                                 msg.as_str(),
                             )?;
@@ -737,9 +738,9 @@ impl super::MainState {
         let mut something_done = false;
 
         for channel in &channels {
-            if let Some(chanobj) = state.channels.get_mut(channel.to_owned()) {
+            if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel.to_owned())) {
                 // if user in channel
-                let do_it = if chanobj.users.contains_key(&user_nick) {
+                let do_it = if chanobj.users.contains_key(&crate::state::structs::to_unicase(&user_nick)) {
                     something_done = true;
                     true
                 } else {
@@ -759,7 +760,7 @@ impl super::MainState {
                     } else {
                         format!("PART {}", channel)
                     };
-                    let user = state.users.get(&user_nick).unwrap();
+                    let user = state.users.get(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                     let source = if user.modes.cloacked {
                         format!("{}!~{}@{}", user_nick, user.name, user.cloack)
                     } else {
@@ -768,7 +769,7 @@ impl super::MainState {
                     for nick in chanobj.users.keys() {
                         state
                             .users
-                            .get(&nick.clone())
+                            .get(&crate::state::structs::to_unicase(&nick.clone()))
                             .unwrap()
                             .send_msg_display(&source, part_msg.as_str())?;
                     }
@@ -790,7 +791,7 @@ impl super::MainState {
         }
 
         let user_nick = conn_state.user_state.nick.as_ref().unwrap().clone();
-        let user = state.users.get_mut(user_nick.as_str()).unwrap();
+        let user = state.users.get_mut(&crate::state::structs::to_unicase(&user_nick)).unwrap();
 
         // if something done then change last activity time
         if something_done {
@@ -817,13 +818,13 @@ impl super::MainState {
             let user_nick = conn_state.user_state.nick.as_ref().unwrap();
 
             // if channel exists
-            let do_change_topic = if let Some(chanobj) = state.channels.get(channel) {
+            let do_change_topic = if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
                 // if user on channel
-                if chanobj.users.contains_key(user_nick) {
+                if chanobj.users.contains_key(&crate::state::structs::to_unicase(user_nick)) {
                     // if channel topic is not protected otherwise use should be at least
                     // a half-operator.
                     if !chanobj.modes.protected_topic
-                        || chanobj.users.get(user_nick).unwrap().is_half_operator()
+                        || chanobj.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap().is_half_operator()
                     {
                         true
                     } else {
@@ -853,7 +854,7 @@ impl super::MainState {
 
             if do_change_topic {
                 // change topic
-                let chanobj = state.channels.get_mut(channel).unwrap();
+                let chanobj = state.channels.get_mut(&crate::state::structs::to_unicase(channel)).unwrap();
                 if !topic.is_empty() {
                     chanobj.topic = Some(ChannelTopic::new_with_nick(
                         topic.to_string(),
@@ -876,11 +877,11 @@ impl super::MainState {
             }
             if do_change_topic {
                 // send message about to all users in channel.
-                let chanobj = state.channels.get(channel).unwrap();
+                let chanobj = state.channels.get(&crate::state::structs::to_unicase(channel)).unwrap();
                 for cu in chanobj.users.keys() {
                     state
                         .users
-                        .get(cu)
+                        .get(&crate::state::structs::to_unicase(cu))
                         .unwrap()
                         .send_message(msg, &conn_state.user_state.source)?;
                 }
@@ -888,10 +889,10 @@ impl super::MainState {
         } else {
             // read topic
             let state = self.state.read().await;
-            if let Some(chanobj) = state.channels.get(channel) {
+            if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
                 let user_nick = conn_state.user_state.nick.as_ref().unwrap();
 
-                if chanobj.users.contains_key(user_nick) {
+                if chanobj.users.contains_key(&crate::state::structs::to_unicase(user_nick)) {
                     // if user on channel
                     if let Some(ref topic) = chanobj.topic {
                         self.feed_msg(
@@ -941,13 +942,13 @@ impl super::MainState {
         conn_state: &mut ConnState,
         channel_name: &'a str,
         channel: &'a Channel,
-        users: &HashMap<String, User>,
+        users: &HashMap<UniCase<String>, User>,
         end: bool,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
         let conn_user_nick = conn_state.user_state.nick.as_ref().unwrap();
 
-        let in_channel = channel.users.contains_key(conn_user_nick);
+        let in_channel = channel.users.contains_key(&crate::state::structs::to_unicase(conn_user_nick));
         // if channel is not secret or user on channel.
         if !channel.modes.secret || in_channel {
             const NAMES_COUNT: usize = 20;
@@ -957,7 +958,7 @@ impl super::MainState {
             name_chunk.reserve(NAMES_COUNT);
 
             for (unick, chum) in &channel.users {
-                let user = users.get(unick.as_str()).unwrap();
+                let user = users.get(&crate::state::structs::to_unicase(unick.as_str())).unwrap();
                 // do not send names of invisible users or user on channel
                 if !user.modes.invisible || in_channel {
                     name_chunk.push(NameReplyStruct {
@@ -1016,7 +1017,7 @@ impl super::MainState {
         if !channels.is_empty() {
             // send names with EndOfNames
             for c in channels {
-                if let Some(channel) = state.channels.get(c) {
+                if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(c)) {
                     self.send_names_from_channel(conn_state, c, channel, &state.users, true)
                         .await?;
                 } else {
@@ -1076,7 +1077,7 @@ impl super::MainState {
                 for (chname, ch) in channels.iter().filter_map(|chname| {
                     state
                         .channels
-                        .get(&chname.to_string())
+                        .get(&crate::state::structs::to_unicase(chname))
                         .filter(|ch| !ch.modes.secret)
                         .map(|ch| (chname, ch))
                 }) {
@@ -1131,11 +1132,11 @@ impl super::MainState {
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let client = conn_state.user_state.client_name();
 
-        let do_invite = if let Some(chanobj) = state.channels.get(channel) {
-            if chanobj.users.contains_key(user_nick) {
+        let do_invite = if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
+            if chanobj.users.contains_key(&crate::state::structs::to_unicase(user_nick)) {
                 let do_invite2 = if chanobj.modes.invite_only {
                     // only operator can invite into channel if channel is invite_only.
-                    if !chanobj.users.get(user_nick).unwrap().operator {
+                    if !chanobj.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap().operator {
                         self.feed_msg(
                             &mut conn_state.stream,
                             ErrChanOpPrivsNeeded482 { client, channel },
@@ -1149,7 +1150,7 @@ impl super::MainState {
                     true
                 };
                 if do_invite2 {
-                    if chanobj.users.contains_key(nickname) {
+                    if chanobj.users.contains_key(&crate::state::structs::to_unicase(nickname)) {
                         self.feed_msg(
                             &mut conn_state.stream,
                             ErrUserOnChannel443 {
@@ -1185,7 +1186,7 @@ impl super::MainState {
 
         if do_invite {
             // check user
-            if let Some(invited) = state.users.get_mut(nickname) {
+            if let Some(invited) = state.users.get_mut(&crate::state::structs::to_unicase(nickname)) {
                 invited.invited_to.insert(channel.to_string());
                 self.feed_msg(
                     &mut conn_state.stream,
@@ -1225,16 +1226,16 @@ impl super::MainState {
 
         let mut kicked = vec![];
 
-        if let Some(chanobj) = state.channels.get(channel) {
+        if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
             // if user on channel
-            if chanobj.users.contains_key(user_nick) {
-                let user_chum = chanobj.users.get(user_nick).unwrap();
+            if chanobj.users.contains_key(&crate::state::structs::to_unicase(user_nick)) {
+                let user_chum = chanobj.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
                 // if user is half operator at least.
                 if user_chum.is_half_operator() {
                     let is_only_half_oper = user_chum.is_only_half_operator();
                     for kick_user in &kick_users {
                         let ku = kick_user.to_string();
-                        if let Some(chum) = chanobj.users.get(&ku) {
+                        if let Some(chum) = chanobj.users.get(&crate::state::structs::to_unicase(&ku)) {
                             if !chum.is_protected()
                                 && (!chum.is_half_operator() || !is_only_half_oper)
                             {
@@ -1285,20 +1286,20 @@ impl super::MainState {
             for ku in &kicked {
                 state.remove_user_from_channel(channel, ku);
             }
-            let chanobj = state.channels.get(channel).unwrap();
+            let chanobj = state.channels.get(&crate::state::structs::to_unicase(channel)).unwrap();
             for ku in &kicked {
                 let kick_msg = format!("KICK {} {} :{}", channel, ku, comment.unwrap_or("Kicked"));
                 for nick in chanobj.users.keys() {
                     state
                         .users
-                        .get(nick)
+                        .get(&crate::state::structs::to_unicase(nick))
                         .unwrap()
                         .send_msg_display(&conn_state.user_state.source, kick_msg.clone())?;
                 }
                 // and send to kicked user
                 state
                     .users
-                    .get(&ku.to_string())
+                    .get(&crate::state::structs::to_unicase(&ku.to_string()))
                     .unwrap()
                     .send_msg_display(&conn_state.user_state.source, kick_msg.clone())?;
             }

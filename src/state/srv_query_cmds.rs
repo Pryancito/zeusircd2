@@ -24,6 +24,7 @@ use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::Duration;
+use unicase::UniCase;
 
 impl super::MainState {
     pub(super) async fn process_motd<'a>(
@@ -296,7 +297,7 @@ impl super::MainState {
         } else {
             let state = self.state.read().await;
             let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-            let user = state.users.get(user_nick).unwrap();
+            let user = state.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
 
             if user.modes.is_local_oper() {
                 match stat {
@@ -452,7 +453,7 @@ impl super::MainState {
     async fn process_mode_channel<'a>(
         &self,
         conn_state: &mut ConnState,
-        users: &HashMap<String, User>,
+        users: &HashMap<UniCase<String>, User>,
         chanobj: &mut Channel,
         target: &'a str,
         modes: Vec<(&'a str, Vec<&'a str>)>,
@@ -461,7 +462,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
-        let user = users.get(&client.to_string());
+        let user = users.get(&crate::state::structs::to_unicase(&client.to_string()));
         let if_oper = user.as_ref().unwrap().modes.is_local_oper();
         let mut set_mode_args: Vec<String> = Vec::new();
         let mut unset_mode_args: Vec<String> = Vec::new();
@@ -629,16 +630,16 @@ impl super::MainState {
                     
                                                 // Remover el ban expirado
                                                 let mut state = state_clone.write().await;
-                                                if let Some(channel) = state.channels.get_mut(&channel_name) {
+                                                if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel_name)) {
                                                     if let Some(ban_set) = &mut channel.modes.ban {
                                                         // Ahora ban_mask_for_timeout es un String, así que &ban_mask_for_timeout es &String
                                                         ban_set.remove(&ban_mask_for_timeout);
                                                         channel.ban_info.remove(&ban_mask_for_timeout);
                     
                                                         // Notificar a los usuarios del canal
-                                                        let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                                        let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                                         for nick in nicks {
-                                                            if let Some(user) = state.users.get_mut(&nick) {
+                                                            if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                                                 let mensaje = format!("MODE {} -b {}",
                                                                     channel_name,
                                                                     ban_mask_for_timeout); // Aquí también usa la String
@@ -759,15 +760,15 @@ impl super::MainState {
                     
                                                 // Remover el ban global expirado
                                                 let mut state = state_clone.write().await;
-                                                if let Some(channel) = state.channels.get_mut(&channel_name) {
+                                                if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel_name)) {
                                                     if let Some(ban_set) = &mut channel.modes.global_ban {
                                                         ban_set.remove(&ban_mask_for_timeout);
                                                         channel.ban_info.remove(&ban_mask_for_timeout);
                     
                                                         // Notificar a los usuarios del canal
-                                                        let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                                        let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                                         for nick in nicks {
-                                                            if let Some(user) = state.users.get_mut(&nick) {
+                                                            if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                                                 let mensaje = format!("MODE {} -B {}",
                                                                     channel_name,
                                                                     ban_mask_for_timeout);
@@ -964,7 +965,7 @@ impl super::MainState {
                         }
                         'o' | 'v' | 'h' | 'q' | 'a' => {
                             let arg = margs_it.next().unwrap();
-                            if chanobj.users.contains_key(&arg.to_string()) {
+                            if chanobj.users.contains_key(&crate::state::structs::to_unicase(&arg.to_string())) {
                                 match mchar {
                                     'o' => {
                                         if if_op || if_oper {
@@ -1167,7 +1168,7 @@ impl super::MainState {
                 for unick in chanobj.users.keys() {
                     // to all users of channel
                     users
-                        .get(unick)
+                        .get(&crate::state::structs::to_unicase(unick))
                         .unwrap()
                         .send_msg_display(&conn_state.user_state.source, mode_string.as_str())?;
                 }
@@ -1184,7 +1185,7 @@ impl super::MainState {
         modes: Vec<(&'a str, Vec<&'a str>)>,
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let client = conn_state.user_state.client_name();
-        let user = state.users.get_mut(target).unwrap();
+        let user = state.users.get_mut(&crate::state::structs::to_unicase(target)).unwrap();
         let user_nick = target;
         if modes.is_empty() {
             self.feed_msg(
@@ -1395,8 +1396,8 @@ impl super::MainState {
 
         if validate_channel(target).is_ok() {
             // channel
-            if let Some(chanobj) = state.channels.get_mut(target) {
-                let (chum, error) = if let Some(chum) = chanobj.users.get(user_nick) {
+            if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(target)) {
+                let (chum, error) = if let Some(chum) = chanobj.users.get(&crate::state::structs::to_unicase(user_nick)) {
                     (*chum, false)
                 } else {
                     self.feed_msg(

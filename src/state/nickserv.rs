@@ -89,7 +89,7 @@ impl super::MainState {
                 
                 // Check if user is operator
                 let state = self.state.read().await;
-                let user = state.users.get(nick).unwrap();
+                let user = state.users.get(&crate::state::structs::to_unicase(nick)).unwrap();
                 let is_oper = user.modes.is_local_oper();
 
                 if let Some(db_arc) = &self.databases.nick_db {
@@ -450,7 +450,7 @@ impl super::MainState {
                             // Verificar si el nick está en uso y desconectar si es necesario
                             let user_to_disconnect = {
                                 let state = self.state.read().await;
-                                if state.users.contains_key(target_nick) {
+                                if state.users.contains_key(&crate::state::structs::to_unicase(target_nick)) {
                                     // El nick está en uso, preparar para desconectar
                                     Some(target_nick.to_string())
                                 } else {
@@ -461,7 +461,7 @@ impl super::MainState {
                             // Desconectar al usuario existente si es necesario
                             if let Some(existing_nick) = user_to_disconnect {
                                 let mut state = self.state.write().await;
-                                if let Some(user) = state.users.remove(&existing_nick) {
+                                if let Some(user) = state.users.remove(&crate::state::structs::to_unicase(&existing_nick)) {
                                     // Enviar mensaje de desconexión al usuario existente
                                     if let Some(sender) = user.quit_sender {
                                         let _ = sender.send((existing_nick.clone(), "NickServ: Nick claimed".to_string()));
@@ -479,7 +479,7 @@ impl super::MainState {
                             // Actualizar en el estado global
                             let mut statem = self.state.write().await;
                             let state = statem.deref_mut();
-                            if let Some(mut user) = state.users.remove(&old_nick.to_string()    ) {
+                            if let Some(mut user) = state.users.remove(&crate::state::structs::to_unicase(&old_nick)) {
                                 if vhost.is_some() {
                                     conn_state.user_state.cloack = vhost.clone().expect("ERROR.in.vHost");
                                     user.cloack = vhost.clone().expect("ERROR.in.vHost");
@@ -488,11 +488,11 @@ impl super::MainState {
                                 user.update_nick(&conn_state.user_state);
                                 if !user.modes.registered {
                                     for channel in &user.channels {
-                                        if let Some(chanobj) = state.channels.get_mut(&channel.clone()) {
-                                            let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                        if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel.clone())) {
+                                            let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                             for nicknames in nicks {
                                                 if nicknames != target_nick.to_string() && nicknames != old_nick.to_string() {
-                                                    if let Some(user) = state.users.get_mut(&nicknames.to_string()) {
+                                                    if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nicknames)) {
                                                         let part_msg = format!("PART {} :vHost", channel);
                                                         let _ = user.send_msg_display(
                                                             &old_source,
@@ -503,7 +503,7 @@ impl super::MainState {
                                                             &conn_state.user_state.source,
                                                             join_msg.as_str()
                                                         );
-                                                        if let Some(user_chum) = chanobj.users.get(&old_nick.to_string()) {
+                                                        if let Some(user_chum) = chanobj.users.get(&crate::state::structs::to_unicase(&old_nick)) {
                                                             let mut arg = Vec::new();
                                                             if user_chum.founder {
                                                                 arg.push("q");
@@ -534,7 +534,7 @@ impl super::MainState {
                                 user.modes.registered = true;
                                 // Actualizar canales
                                 for ch in &user.channels {
-                                    if let Some(channel) = state.channels.get_mut(&ch.clone()) {
+                                    if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&ch.clone())) {
                                         channel.rename_user(&old_nick, target_nick.to_string());
                                     }
                                 }
@@ -549,7 +549,7 @@ impl super::MainState {
                                 state.insert_to_nick_history(&old_nick, user.history_entry.clone());
                                 
                                 // Insertar con el nuevo nick
-                                state.users.insert(target_nick.to_string(), user.clone());
+                                state.users.insert(crate::state::structs::to_unicase(&target_nick.to_string()), user.clone());
                             }
                             
                             // Obtener el nuevo client_name después de las modificaciones

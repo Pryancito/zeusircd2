@@ -49,8 +49,8 @@ impl super::MainState {
                 let (target_type, chan_str) = get_privmsg_target_type(target);
                 if target_type.contains(PrivMsgTargetType::Channel) {
                     // to channel
-                    if let Some(chanobj) = state.channels.get(chan_str) {
-                        let chanuser_mode = chanobj.users.get(&user_nick);
+                    if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(chan_str)) {
+                        let chanuser_mode = chanobj.users.get(&crate::state::structs::to_unicase(&user_nick));
                         // check whether can send from outside channel
                         let can_send = {
                             if (!chanobj.modes.no_external_messages && !chanobj.modes.secret)
@@ -108,7 +108,7 @@ impl super::MainState {
                                     if let Some(ref founders) = chanobj.modes.founders {
                                         founders.iter().try_for_each(|u| {
                                             if u != &user_nick {
-                                                state.users.get(u).unwrap().send_msg_display(
+                                                state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
                                                 )
@@ -122,7 +122,7 @@ impl super::MainState {
                                     if let Some(ref protecteds) = chanobj.modes.protecteds {
                                         protecteds.iter().try_for_each(|u| {
                                             if u != &user_nick {
-                                                state.users.get(u).unwrap().send_msg_display(
+                                                state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
                                                 )
@@ -136,7 +136,7 @@ impl super::MainState {
                                     if let Some(ref operators) = chanobj.modes.operators {
                                         operators.iter().try_for_each(|u| {
                                             if u != &user_nick {
-                                                state.users.get(u).unwrap().send_msg_display(
+                                                state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
                                                 )
@@ -150,7 +150,7 @@ impl super::MainState {
                                     if let Some(ref half_ops) = chanobj.modes.half_operators {
                                         half_ops.iter().try_for_each(|u| {
                                             if u != &user_nick {
-                                                state.users.get(u).unwrap().send_msg_display(
+                                                state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
                                                 )
@@ -164,7 +164,7 @@ impl super::MainState {
                                     if let Some(ref voices) = chanobj.modes.voices {
                                         voices.iter().try_for_each(|u| {
                                             if u != &user_nick {
-                                                state.users.get(u).unwrap().send_msg_display(
+                                                state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                                     &conn_state.user_state.source,
                                                     &msg_str,
                                                 )
@@ -177,8 +177,8 @@ impl super::MainState {
                             } else {
                                 // send to all users
                                 chanobj.users.keys().try_for_each(|u| {
-                                    if u != &user_nick {
-                                        state.users.get(u).unwrap().send_msg_display(
+                                    if u != &crate::state::structs::to_unicase(&user_nick) {
+                                        state.users.get(&crate::state::structs::to_unicase(u)).unwrap().send_msg_display(
                                             &conn_state.user_state.source,
                                             &msg_str,
                                         )
@@ -207,7 +207,7 @@ impl super::MainState {
                 } else {
                     // to user
                     let client = conn_state.user_state.client_name();
-                    if let Some(cur_user) = state.users.get(*target) {
+                    if let Some(cur_user) = state.users.get(&crate::state::structs::to_unicase(*target)) {
                         cur_user.send_msg_display(&conn_state.user_state.source, &msg_str)?;
                         if !notice {
                             // if user away
@@ -244,7 +244,7 @@ impl super::MainState {
             // update last activity if something sent
             if something_done {
                 let mut state = self.state.write().await;
-                let user = state.users.get_mut(&user_nick).unwrap();
+                let user = state.users.get_mut(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                 user.last_activity = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
                     .unwrap()
@@ -336,19 +336,19 @@ impl super::MainState {
             }
         } else if validate_channel(mask).is_ok() {
             // if channel
-            if let Some(channel) = state.channels.get(mask) {
+            if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(mask)) {
                 for (u, chum) in &channel.users {
                     self.send_who_info(
                         conn_state,
                         u,
-                        state.users.get(u).unwrap(),
+                        state.users.get(&crate::state::structs::to_unicase(u)).unwrap(),
                         Some((mask, chum)),
                     )
                     .await?;
                 }
             }
         } else if validate_username(mask).is_ok() {
-            if let Some(arg_user) = state.users.get(mask) {
+            if let Some(arg_user) = state.users.get(&crate::state::structs::to_unicase(mask)) {
                 self.send_who_info(conn_state, mask, arg_user, None)
                     .await?;
             }
@@ -381,7 +381,7 @@ impl super::MainState {
         };
 
         // Obtener el usuario actual de forma segura
-        let user = match state.users.get(&current_nick.to_string()) {
+        let user = match state.users.get(&crate::state::structs::to_unicase(&current_nick.to_string())) {
             Some(u) => u,
             None => {
                 self.feed_msg(
@@ -459,9 +459,9 @@ impl super::MainState {
                 // channels
                 let mut chans = Vec::new();
                 for chan in &arg_user.channels {
-                    if let Some(channel) = state.channels.get(chan) {
+                    if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(chan)) {
                         let mut prefix = None;
-                        if let Some(chum) = channel.users.get(&real_nick) {
+                        if let Some(chum) = channel.users.get(&crate::state::structs::to_unicase(&real_nick)) {
                             let p = chum.to_string(&conn_state.caps);
                             if !p.is_empty() {
                                 prefix = Some(p);
@@ -495,7 +495,7 @@ impl super::MainState {
                     )
                     .await?;
                 }
-                if user.modes.is_local_oper() || client == real_nick {
+                if user.modes.is_local_oper() || client == **UniCase::new(real_nick) {
                     self.feed_msg(
                         &mut conn_state.stream,
                         RplWhoIsHost378 {
@@ -661,11 +661,11 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
+        let user = state.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
 
         if user.modes.oper {
             // only operator can kill user
-            if let Some(user_to_kill) = state.users.get_mut(nickname) {
+            if let Some(user_to_kill) = state.users.get_mut(&crate::state::structs::to_unicase(nickname)) {
                 if let Some(sender) = user_to_kill.quit_sender.take() {
                     sender
                         .send((user_nick.to_string(), comment.to_string()))
@@ -712,7 +712,7 @@ impl super::MainState {
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
         let state = self.state.read().await;
-        let user = state.users.get(user_nick).unwrap();
+        let user = state.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
         if user.modes.is_local_oper() {
             let msg = Message::from_shared_str("NOTICE Servidor reiniciándose, por favor reconéctese.")?;
             for u in state.users.values() {
@@ -742,7 +742,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
+        let user = state.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
         let message = message_opt.unwrap_or("Shutting down server");
 
         // only operator can kill server
@@ -772,7 +772,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let mut state = self.state.write().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get_mut(user_nick).unwrap();
+        let user = state.users.get_mut(&crate::state::structs::to_unicase(user_nick)).unwrap();
         if let Some(t) = text {
             // set away
             user.away = Some(t.to_string());
@@ -798,7 +798,7 @@ impl super::MainState {
         for nicks in nicknames.chunks(20) {
             let replies = nicks
                 .iter()
-                .filter_map(|nick| state.users.get(&nick.to_string()).map(|user| (nick, user)))
+                .filter_map(|nick| state.users.get(&crate::state::structs::to_unicase(&nick.to_string())).map(|user| (nick, user)))
                 .map(|(nick, user)| {
                     let asterisk = if user.modes.is_local_oper() { "*" } else { "" };
                     let away = if user.away.is_some() { '-' } else { '+' };
@@ -827,14 +827,14 @@ impl super::MainState {
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         let state = self.state.read().await;
         let user_nick = conn_state.user_state.nick.as_ref().unwrap();
-        let user = state.users.get(user_nick).unwrap();
+        let user = state.users.get(&crate::state::structs::to_unicase(user_nick)).unwrap();
 
         // only local operator or higher can send message to wallops
         if user.modes.is_local_oper() {
             state.wallops_users.iter().try_for_each(|wu| {
                 state
                     .users
-                    .get(wu)
+                    .get(&crate::state::structs::to_unicase(wu))
                     .unwrap()
                     .send_message(msg, &conn_state.user_state.source)
             })?;
@@ -856,7 +856,7 @@ impl super::MainState {
         for nicks in nicknames.chunks(20) {
             let outs = nicks
                 .iter()
-                .filter(|nick| state.users.contains_key(&nick.to_string()))
+                .filter(|nick| state.users.contains_key(&crate::state::structs::to_unicase(nick)))
                 .copied()
                 .collect::<Vec<_>>();
             self.feed_msg(
@@ -1439,7 +1439,7 @@ mod test {
             let activity = {
                 let mut state = main_state.state.write().await;
                 state.users.get_mut("alan").unwrap().last_activity -= 10;
-                state.users.get("alan").unwrap().last_activity
+                state.users.get(&crate::state::structs::to_unicase("alan")).unwrap().last_activity
             };
             line_stream
                 .send("PRIVMSG guru :Hello boys".to_string())
@@ -1452,7 +1452,7 @@ mod test {
             );
             {
                 let state = main_state.state.read().await;
-                assert_eq!(activity, state.users.get("alan").unwrap().last_activity);
+                assert_eq!(activity, state.users.get(&crate::state::structs::to_unicase("alan")).unwrap().last_activity);
             }
 
             line_stream
@@ -1466,7 +1466,7 @@ mod test {
             time::sleep(Duration::from_millis(50)).await;
             {
                 let state = main_state.state.read().await;
-                assert_ne!(activity, state.users.get("alan").unwrap().last_activity);
+                assert_ne!(activity, state.users.get(&crate::state::structs::to_unicase("alan")).unwrap().last_activity);
             }
         }
 

@@ -32,8 +32,14 @@ use tokio::time;
 use tracing::*;
 use sha2::{Sha256, Digest};
 use tokio::sync::RwLock;
+use unicase::UniCase;
 
 use crate::command::*;
+
+// Helper function to convert string to UniCase for case-insensitive lookups
+pub(crate) fn to_unicase(s: &str) -> UniCase<String> {
+    UniCase::new(s.to_string())
+}
 use crate::config::*;
 use crate::utils::*;
 
@@ -532,7 +538,7 @@ pub(super) struct Channel {
     pub(super) modes: ChannelModes,
     pub(super) default_modes: ChannelDefaultModes,
     pub(super) ban_info: HashMap<String, BanInfo>,
-    pub(super) users: HashMap<String, ChannelUserModes>,
+    pub(super) users: HashMap<UniCase<String>, ChannelUserModes>,
     pub(super) creation_time: u64,
     // if channel is preconfigured - it comes from configuration
     pub(super) preconfigured: bool,
@@ -542,7 +548,7 @@ impl Channel {
     pub(super) fn new_on_user_join(user_nick: String) -> Channel {
         let mut users = HashMap::new();
         users.insert(
-            user_nick.clone(),
+            crate::state::structs::to_unicase(&user_nick),
             ChannelUserModes::new_for_created_channel(),
         );
         Channel {
@@ -592,12 +598,12 @@ impl Channel {
             protecteds.insert(user_nick.clone());
             self.modes.protecteds = Some(protecteds);
         }
-        self.users.insert(user_nick.clone(), chum);
+        self.users.insert(crate::state::structs::to_unicase(&user_nick), chum);
     }
 
     pub(super) fn rename_user(&mut self, old_nick: &String, nick: String) {
-        let oldchumode = self.users.remove(old_nick).unwrap();
-        self.users.insert(nick.clone(), oldchumode);
+        let oldchumode = self.users.remove(&crate::state::structs::to_unicase(old_nick)).unwrap();
+        self.users.insert(crate::state::structs::to_unicase(&nick), oldchumode);
         self.modes.rename_user(old_nick, nick);
     }
 
@@ -608,7 +614,7 @@ impl Channel {
         self.remove_founder(nick);
         self.remove_voice(nick);
         self.remove_protected(nick);
-        self.users.remove(nick);
+        self.users.remove(&crate::state::structs::to_unicase(nick));
     }
 
     // add/remove user from list
@@ -616,61 +622,61 @@ impl Channel {
         let mut ops = self.modes.operators.take().unwrap_or_default();
         ops.insert(nick.to_string());
         self.modes.operators = Some(ops);
-        self.users.get_mut(nick).unwrap().operator = true;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().operator = true;
     }
     pub(super) fn remove_operator(&mut self, nick: &str) {
         let mut ops = self.modes.operators.take().unwrap_or_default();
         ops.remove(nick);
         self.modes.operators = Some(ops);
-        self.users.get_mut(nick).unwrap().operator = false;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().operator = false;
     }
     pub(super) fn add_half_operator(&mut self, nick: &str) {
         let mut half_ops = self.modes.half_operators.take().unwrap_or_default();
         half_ops.insert(nick.to_string());
         self.modes.half_operators = Some(half_ops);
-        self.users.get_mut(nick).unwrap().half_oper = true;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().half_oper = true;
     }
     pub(super) fn remove_half_operator(&mut self, nick: &str) {
         let mut half_ops = self.modes.half_operators.take().unwrap_or_default();
         half_ops.remove(nick);
         self.modes.half_operators = Some(half_ops);
-        self.users.get_mut(nick).unwrap().half_oper = false;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().half_oper = false;
     }
     pub(super) fn add_voice(&mut self, nick: &str) {
         let mut voices = self.modes.voices.take().unwrap_or_default();
         voices.insert(nick.to_string());
         self.modes.voices = Some(voices);
-        self.users.get_mut(nick).unwrap().voice = true;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().voice = true;
     }
     pub(super) fn remove_voice(&mut self, nick: &str) {
         let mut voices = self.modes.voices.take().unwrap_or_default();
         voices.remove(nick);
         self.modes.voices = Some(voices);
-        self.users.get_mut(nick).unwrap().voice = false;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().voice = false;
     }
     pub(super) fn add_founder(&mut self, nick: &str) {
         let mut founders = self.modes.founders.take().unwrap_or_default();
         founders.insert(nick.to_string());
         self.modes.founders = Some(founders);
-        self.users.get_mut(nick).unwrap().founder = true;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().founder = true;
     }
     pub(super) fn remove_founder(&mut self, nick: &str) {
         let mut founders = self.modes.founders.take().unwrap_or_default();
         founders.remove(nick);
         self.modes.founders = Some(founders);
-        self.users.get_mut(nick).unwrap().founder = false;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().founder = false;
     }
     pub(super) fn add_protected(&mut self, nick: &str) {
         let mut protecteds = self.modes.protecteds.take().unwrap_or_default();
         protecteds.insert(nick.to_string());
         self.modes.protecteds = Some(protecteds);
-        self.users.get_mut(nick).unwrap().protected = true;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().protected = true;
     }
     pub(super) fn remove_protected(&mut self, nick: &str) {
         let mut protecteds = self.modes.protecteds.take().unwrap_or_default();
         protecteds.remove(nick);
         self.modes.protecteds = Some(protecteds);
-        self.users.get_mut(nick).unwrap().protected = false;
+        self.users.get_mut(&crate::state::structs::to_unicase(nick)).unwrap().protected = false;
     }
 }
 
@@ -1113,8 +1119,8 @@ async fn pong_client_timeout(
 }
 
 pub struct VolatileState {
-    pub(super) users: HashMap<String, User>,
-    pub(super) channels: HashMap<String, Channel>,
+    pub(super) users: HashMap<UniCase<String>, User>,
+    pub(super) channels: HashMap<UniCase<String>, Channel>,
     pub(super) wallops_users: HashSet<String>,
     pub(super) invisible_users_count: usize,
     pub(super) operators_count: usize,
@@ -1133,7 +1139,7 @@ impl VolatileState {
                 let def_ch_modes = ChannelDefaultModes::new_from_modes_and_cleanup(&mut ch_modes);
 
                 channels.insert(
-                    c.name.clone(),
+                    UniCase::new(c.name.clone()),
                     Channel {
                         topic: c.topic.as_ref().map(|x| ChannelTopic::new(x.clone())),
                         ban_info: HashMap::new(),
@@ -1175,7 +1181,7 @@ impl VolatileState {
         if user.modes.is_local_oper() {
             self.operators_count += 1;
         }
-        self.users.insert(unick.to_string(), user);
+        self.users.insert(UniCase::new(unick.to_string()), user);
         if self.users.len() > self.max_users_count {
             self.max_users_count = self.users.len();
         }
@@ -1184,21 +1190,21 @@ impl VolatileState {
     // remove user from channel and remove channel from user.
     // remove same channel if no more users at channel.
     pub(super) fn remove_user_from_channel<'a>(&mut self, channel: &'a str, nick: &'a str) {
-        if let Some(chanobj) = self.channels.get_mut(channel) {
+        if let Some(chanobj) = self.channels.get_mut(&UniCase::new(channel.to_string())) {
             chanobj.remove_user(nick);
             if chanobj.users.is_empty() && !chanobj.preconfigured {
                 info!("Channel {} has been removed", channel);
-                self.channels.remove(channel);
+                self.channels.remove(&UniCase::new(channel.to_string()));
             }
         }
-        if let Some(user) = self.users.get_mut(nick) {
+        if let Some(user) = self.users.get_mut(&UniCase::new(nick.to_string())) {
             user.channels.remove(channel);
         }
     }
 
     // remove user - including stats like invisible users.
     pub(super) fn remove_user(&mut self, nick: &str) {
-        if let Some(user) = self.users.remove(nick) {
+        if let Some(user) = self.users.remove(&UniCase::new(nick.to_string())) {
             if user.modes.is_local_oper() {
                 self.operators_count -= 1;
             }
@@ -1932,7 +1938,7 @@ mod test {
             .iter()
             .for_each(|(chname, nick)| {
                 state.channels.insert(
-                    chname.to_string(),
+                    UniCase::new(chname.to_string()),
                     Channel::new_on_user_join(nick.to_string()),
                 );
                 state
@@ -1944,7 +1950,7 @@ mod test {
             });
         state
             .channels
-            .get_mut(&"#something".to_string())
+            .get_mut(&UniCase::new("#something".to_string()))
             .unwrap()
             .users
             .insert("matixi".to_string(), ChannelUserModes::default());
@@ -1956,15 +1962,15 @@ mod test {
             .insert("#something".to_string());
 
         state.remove_user_from_channel("#something", "matixi");
-        assert!(state.channels.contains_key("#something"));
+        assert!(state.channels.contains_key(&UniCase::new("#something".to_string())));
         assert_eq!(
             HashMap::new(),
-            state.channels.get("#something").unwrap().users
+            state.channels.get(&UniCase::new("#something".to_string())).unwrap().users
         );
         state.remove_user_from_channel("#matixichan", "matixi");
-        assert!(!state.channels.contains_key("#matixichan"));
+        assert!(!state.channels.contains_key(&UniCase::new("#matixichan".to_string())));
         state.remove_user_from_channel("#tulipan", "matixi");
-        assert!(!state.channels.contains_key("#tulipan"));
+        assert!(!state.channels.contains_key(&UniCase::new("#tulipan".to_string())));
     }
 
     #[test]

@@ -55,13 +55,13 @@ impl super::MainState {
                     
                     // Establecer automáticamente el modo +r para canales registrados
                     let mut state = self.state.write().await;
-                    if let Some(chanobj) = state.channels.get_mut(channel) {
+                    if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel)) {
                         chanobj.modes.registered = true;
                         
                         // Notificar a todos los usuarios del canal sobre el cambio de modo
-                        let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                        let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                         for nick in nicks {
-                            if let Some(user) = state.users.get_mut(&nick) {
+                            if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                 let mensaje = format!("MODE {} +r", channel);
                                 let _ = user.send_msg_display(&self.config.name, &mensaje);
                             }
@@ -96,14 +96,14 @@ impl super::MainState {
                         
                         // Quitar automáticamente el modo +r cuando se elimina el canal
                         let mut state = self.state.write().await;
-                        if let Some(chanobj) = state.channels.get_mut(channel) {
+                        if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel)) {
                             if chanobj.modes.registered {
                                 chanobj.modes.registered = false;
                                 
                                 // Notificar a todos los usuarios del canal sobre el cambio de modo
-                                let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                 for nick in nicks {
-                                    if let Some(user) = state.users.get_mut(&nick) {
+                                    if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                         let mensaje = format!("MODE {} -r", channel);
                                         let _ = user.send_msg_display(&self.config.name, &mensaje);
                                     }
@@ -394,19 +394,19 @@ impl super::MainState {
                         
                         // Send topic change to all users in the channel
                         let mut state = self.state.write().await;
-                        if let Some(chanobj) = state.channels.get_mut(channel) {
+                        if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel)) {
                             // Update topic in internal IRCd logic
                             chanobj.topic = Some(ChannelTopic::new_with_nick(new_topic.clone(), nick.to_string()));
                             
                             let topic_msg = format!("TOPIC {} :{}", channel, new_topic);
                             // Collect user nicks to avoid borrowing conflict
-                            let user_nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                            let user_nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                             drop(state); // Release mutable borrow
                             
                             // Now access users separately
                             let state = self.state.read().await;
                             for user_nick in user_nicks {
-                                if let Some(user) = state.users.get(&user_nick) {
+                                if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&user_nick)) {
                                     // Send message using user's sender
                                     let _ = user.send_msg_display("ChanServ", &topic_msg);
                                 }
@@ -487,7 +487,7 @@ impl super::MainState {
                             db.update_channel_info(channel, None, None, None, Some("")).await?;
                             // Limpiar modos mlock en la lógica interna si el canal existe
                             let mut state = self.state.write().await;
-                            if let Some(chanobj) = state.channels.get_mut(channel) {
+                            if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel)) {
                                 // Limpiar los modos mlock (solo los modos permitidos por mlock)
                                 self.apply_stored_modes(&mut chanobj.modes, "");
                             }
@@ -499,7 +499,7 @@ impl super::MainState {
                             
                             // Aplicar los modos al canal si existe
                             let mut state = self.state.write().await;
-                            if let Some(chanobj) = state.channels.get_mut(channel) {
+                            if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(channel)) {
                                 // Limpiar modos anteriores y aplicar los nuevos
                                 self.apply_stored_modes(&mut chanobj.modes, &args);
                             }

@@ -50,6 +50,7 @@ use crate::database::mysql::mysql_impl::{MysqlNickDatabase, MysqlChannelDatabase
 use crate::database::{NickDatabase, ChannelDatabase};
 use serde::ser::StdError;
 use tokio::time::{timeout, Duration};
+use unicase::UniCase;
 
 use crate::command::*;
 use crate::config::*;
@@ -209,7 +210,7 @@ impl MainState {
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     async fn is_ircop(&self, nick: &str) -> bool {
         let state = self.state.read().await;
-        if let Some(user) = state.users.get(nick) {
+        if let Some(user) = state.users.get(&crate::state::structs::to_unicase(nick)) {
             user.modes.is_local_oper()
         } else {
             false
@@ -327,7 +328,7 @@ impl MainState {
                     conn_state.user_state.set_hostname(hostname);
                     if let Some(nick) = &conn_state.user_state.nick {
                         let mut state = self.state.write().await;
-                        if let Some(user) = state.users.get_mut(nick) {
+                        if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(nick)) {
                             user.update_hostname(&conn_state.user_state, &self.config.cloack);
                         }
                     }
@@ -572,7 +573,7 @@ impl MainState {
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Verificar si el usuario tiene privilegios de operador
         let state = self.state.read().await;
-        let user = state.users.get(conn_state.user_state.nick.as_ref().unwrap()).unwrap();
+        let user = state.users.get(&crate::state::structs::to_unicase(conn_state.user_state.nick.as_ref().unwrap())).unwrap();
         if !user.modes.is_local_oper() {
             self.feed_msg(&mut conn_state.stream, 
                 ErrNoPrivileges481{ client: conn_state.user_state.client_name() }).await?;
@@ -613,7 +614,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                     if conn_state.user_state.authenticated {
                         if let Some(nick) = &conn_state.user_state.nick {
                             let mut state = main_state.state.write().await;
-                            if let Some(user) = state.users.get_mut(nick) {
+                            if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(nick)) {
                                 user.source = format!("{}!{}@{}",
                                     nick, user.name, user.cloack.clone());
                                 conn_state.user_state.source = user.source.clone();
@@ -639,7 +640,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
             // Primero obtenemos una copia de los canales del usuario
             let user_channels = {
                 let state = main_state.state.read().await;
-                if let Some(user) = state.users.get(nick) {
+                if let Some(user) = state.users.get(&crate::state::structs::to_unicase(nick)) {
                     user.channels.clone()
                 } else {
                     HashSet::new()
@@ -650,7 +651,7 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
             for channel in &user_channels {
                 let channel_users = {
                     let state = main_state.state.read().await;
-                    if let Some(chanobj) = state.channels.get(&channel.to_string()) {
+                    if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
                         chanobj.users.keys().cloned().collect::<Vec<_>>()
                     } else {
                         continue;
@@ -658,9 +659,9 @@ async fn user_state_process(main_state: Arc<MainState>, stream: DualTcpStream, a
                 };
 
                 for nickname in channel_users {
-                    if nickname != nick.as_str() {
+                    if nickname != UniCase::new(nick.as_str()) {
                         let state = main_state.state.read().await;
-                        if let Some(user) = state.users.get(&nickname) {
+                        if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&nickname)) {
                             let _ = user.send_msg_display(
                                 &conn_state.user_state.source,
                                 format!("QUIT :{}", conn_state.user_state.quit_reason),

@@ -448,8 +448,8 @@ impl super::MainState {
                         }
                     }
                     let umode_str = user.modes.to_string();
-                    if !state.users.contains_key(&user_nick) {
-                        state.add_user(&user_nick, user);
+                    if !state.users.contains_key(&crate::state::structs::to_unicase(&user_nick)) {
+                        state.add_user(&crate::state::structs::to_unicase(&user_nick), user);
                         umode_str
                     } else {
                         // if nick already used
@@ -764,7 +764,7 @@ impl super::MainState {
     ) -> Result<(), Box<dyn StdError + Send + Sync>> {
         // Si está en negociación de CAP, simplemente establecer el nick
         if conn_state.caps_negotation {
-            if !self.state.read().await.users.contains_key(nick) {
+            if !self.state.read().await.users.contains_key(&crate::state::structs::to_unicase(nick)) {
                 conn_state.user_state.set_nick(nick.to_string());
             } else {
                 let client = conn_state.user_state.client_name();
@@ -773,7 +773,7 @@ impl super::MainState {
             }
         } else if !conn_state.user_state.authenticated {
             // No autenticado y no en negociación de CAP
-            if !self.state.read().await.users.contains_key(nick) {
+            if !self.state.read().await.users.contains_key(&crate::state::structs::to_unicase(nick)) {
                 // Verificar si el nick está registrado en NickServ
                 #[cfg(any(feature = "sqlite", feature = "mysql"))]
                 {
@@ -803,7 +803,7 @@ impl super::MainState {
             
             // Si no tiene nick establecido, establecerlo
             if conn_state.user_state.nick.is_none() {
-                if !state.users.contains_key(nick) {
+                if !state.users.contains_key(&crate::state::structs::to_unicase(nick)) {
                     conn_state.user_state.set_nick(nick.to_string());
                     // Crear el usuario en el estado global
                     let user = User::new(
@@ -812,7 +812,7 @@ impl super::MainState {
                         conn_state.sender.take().unwrap(),
                         conn_state.quit_sender.take().unwrap(),
                     );
-                    state.add_user(nick, user);
+                    state.add_user(&crate::state::structs::to_unicase(nick), user);
                 } else {
                     let client = conn_state.user_state.client_name();
                     self.feed_msg(&mut conn_state.stream, ErrNicknameInUse433 { client, nick })
@@ -824,7 +824,7 @@ impl super::MainState {
                 if nick != old_nick {
                     let nick_str = nick.to_string();
                     // if new nick is not used by other
-                    if !state.users.contains_key(&nick_str) {
+                    if !state.users.contains_key(&crate::state::structs::to_unicase(&nick_str)) {
                         #[cfg(any(feature = "sqlite", feature = "mysql"))]
                         {
                             if let Some(db_arc) = &self.databases.nick_db {
@@ -839,7 +839,7 @@ impl super::MainState {
                             }
                         }
                         let old_source = conn_state.user_state.source.clone();
-                        let mut user = state.users.remove(&old_nick).unwrap();
+                        let mut user = state.users.remove(&crate::state::structs::to_unicase(&old_nick)).unwrap();
                         conn_state.user_state.set_nick(nick_str.clone());
                         user.update_nick(&conn_state.user_state);
                         conn_state.user_state.cloack = user.get_display_hostname(&self.config.cloack);
@@ -847,10 +847,10 @@ impl super::MainState {
                         conn_state.user_state.update_source();
                         if user.modes.registered {
                             for channel in &user.channels {
-                                if let Some(chanobj) = state.channels.get_mut(&channel.clone()) {
-                                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                                if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel.clone())) {
+                                    let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                     for nicknames in nicks {
-                                        if let Some(user) = state.users.get_mut(&nicknames.to_string()) {
+                                        if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nicknames.to_string())) {
                                             let part_msg = format!("PART {} :vHost", channel);
                                             let _ = user.send_msg_display(
                                                 &old_source,
@@ -861,7 +861,7 @@ impl super::MainState {
                                                 &conn_state.user_state.source,
                                                 join_msg.as_str()
                                             );
-                                            if let Some(user_chum) = chanobj.users.get(&old_nick.to_string()) {
+                                            if let Some(user_chum) = chanobj.users.get(&crate::state::structs::to_unicase(&old_nick.to_string())) {
                                                 let mut arg = Vec::new();
                                                 if user_chum.founder {
                                                     arg.push("q");
@@ -892,14 +892,14 @@ impl super::MainState {
                         for ch in &user.channels {
                             state
                                 .channels
-                                .get_mut(&ch.clone())
+                                .get_mut(&crate::state::structs::to_unicase(&ch.clone()))
                                 .unwrap()
                                 .rename_user(&old_nick, nick_str.clone());
                         }
                         // add nick history
                         state.insert_to_nick_history(&old_nick, user.history_entry.clone());
 
-                        state.users.insert(nick_str.clone(), user);
+                        state.users.insert(crate::state::structs::to_unicase(&nick_str), user);
                         // wallops users
                         if state.wallops_users.contains(&old_nick) {
                             state.wallops_users.remove(&old_nick);
@@ -980,7 +980,7 @@ impl super::MainState {
         if let Some(oper_idx) = self.oper_config_idxs.get(nick) {
             // if operator defined in configuration
             let mut state = self.state.write().await;
-            let user = state.users.get_mut(user_nick).unwrap();
+            let user = state.users.get_mut(&crate::state::structs::to_unicase(user_nick)).unwrap();
             let op_cfg_opt = self.config.operators.as_ref().unwrap().get(*oper_idx);
             let op_config = op_cfg_opt.as_ref().unwrap();
 
@@ -1031,7 +1031,7 @@ impl super::MainState {
         if let Some(nick) = &conn_state.user_state.nick {
             let user_channels = {
                 let state = self.state.read().await;
-                if let Some(user) = state.users.get(nick) {
+                if let Some(user) = state.users.get(&crate::state::structs::to_unicase(nick)) {
                     user.channels.clone()
                 } else {
                     HashSet::new()
@@ -1043,10 +1043,10 @@ impl super::MainState {
             let quit_msg = format!("QUIT :{}", conn_state.user_state.quit_reason);
             for chname in &user_channels {
                 let state = self.state.read().await;
-                if let Some(channel) = state.channels.get(chname) {
+                if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(chname)) {
                     for (other_nick, _) in &channel.users {
-                        if other_nick != nick {
-                            if let Some(other_user) = state.users.get(other_nick) {
+                        if **other_nick != **UniCase::new(nick) {
+                            if let Some(other_user) = state.users.get(&crate::state::structs::to_unicase(other_nick)) {
                                 let _ = other_user.send_msg_display(source, quit_msg.clone());
                             }
                         }
@@ -1056,7 +1056,7 @@ impl super::MainState {
             // remove user from state
             {
                 let mut state = self.state.write().await;
-                state.remove_user(nick);
+                state.remove_user(&crate::state::structs::to_unicase(nick));
                 conn_state.quit.store(1, Ordering::SeqCst);
             }
         } else {
