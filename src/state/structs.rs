@@ -537,7 +537,7 @@ pub(super) struct Channel {
     pub(super) topic: Option<ChannelTopic>,
     pub(super) modes: ChannelModes,
     pub(super) default_modes: ChannelDefaultModes,
-    pub(super) ban_info: HashMap<String, BanInfo>,
+    pub(super) ban_info: HashMap<UniCase<String>, BanInfo>,
     pub(super) users: HashMap<UniCase<String>, ChannelUserModes>,
     pub(super) creation_time: u64,
     // if channel is preconfigured - it comes from configuration

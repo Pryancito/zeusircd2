@@ -253,7 +253,7 @@ impl ServerCommunication {
                         (mask.to_string(), None)
                     };
                     chanobj.ban_info.insert(
-                        norm_bmask.clone(),
+                        crate::state::structs::to_unicase(norm_bmask.clone()),
                         BanInfo {
                             who: snick.to_string(),
                             set_time: SystemTime::now()
@@ -290,7 +290,7 @@ impl ServerCommunication {
                             if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel_name)) {
                                 if let Some(ban_set) = &mut channel.modes.global_ban {
                                     ban_set.remove(&ban_mask_for_timeout);
-                                    channel.ban_info.remove(&ban_mask_for_timeout);
+                                    channel.ban_info.remove(&crate::state::structs::to_unicase(ban_mask_for_timeout));
 
                                     // Notificar a los usuarios del canal
                                     let nicks: Vec<String> = channel.users.keys().cloned().collect();
@@ -314,7 +314,7 @@ impl ServerCommunication {
                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
                     gban.remove(&norm_bmask);
-                    chanobj.ban_info.remove(&norm_bmask);
+                    chanobj.ban_info.remove(&crate::state::structs::to_unicase(norm_bmask));
                     let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {

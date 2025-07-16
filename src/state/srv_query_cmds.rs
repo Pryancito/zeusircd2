@@ -606,7 +606,7 @@ impl super::MainState {
                                         let expires_at = duration.map(|d| current_time + d);
                                         
                                         chanobj.ban_info.insert(
-                                            norm_bmask.clone(),
+                                            crate::state::structs::to_unicase(&norm_bmask.clone()),
                                             BanInfo {
                                                 who: conn_state
                                                     .user_state
@@ -634,7 +634,7 @@ impl super::MainState {
                                                     if let Some(ban_set) = &mut channel.modes.ban {
                                                         // Ahora ban_mask_for_timeout es un String, así que &ban_mask_for_timeout es &String
                                                         ban_set.remove(&ban_mask_for_timeout);
-                                                        channel.ban_info.remove(&ban_mask_for_timeout);
+                                                        channel.ban_info.remove(&crate::state::structs::to_unicase(&ban_mask_for_timeout));
                     
                                                         // Notificar a los usuarios del canal
                                                         let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
@@ -656,7 +656,7 @@ impl super::MainState {
                                         unset_mode_args.push(norm_bmask.clone());
 
                                         ban.remove(&norm_bmask);
-                                        chanobj.ban_info.remove(&norm_bmask);
+                                        chanobj.ban_info.remove(&crate::state::structs::to_unicase(&norm_bmask));
                                     }
                                     chanobj.modes.ban = Some(ban);
                                 } else {
@@ -673,7 +673,7 @@ impl super::MainState {
                                 // print
                                 if let Some(ban) = &chanobj.modes.ban {
                                     for b in ban {
-                                        if let Some(ban_info) = chanobj.ban_info.get(&b.clone()) {
+                                        if let Some(ban_info) = chanobj.ban_info.get(&crate::state::structs::to_unicase(&b.clone())) {
                                             self.feed_msg(
                                                 &mut conn_state.stream,
                                                 RplBanList367 {
@@ -733,7 +733,7 @@ impl super::MainState {
                                         gban.insert(norm_bmask.clone());
                                         // add to ban_info
                                         chanobj.ban_info.insert(
-                                            norm_bmask.clone(),
+                                            crate::state::structs::to_unicase(&norm_bmask.clone()),
                                             BanInfo {
                                                 who: conn_state
                                                     .user_state
@@ -763,7 +763,7 @@ impl super::MainState {
                                                 if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel_name)) {
                                                     if let Some(ban_set) = &mut channel.modes.global_ban {
                                                         ban_set.remove(&ban_mask_for_timeout);
-                                                        channel.ban_info.remove(&ban_mask_for_timeout);
+                                                        channel.ban_info.remove(&crate::state::structs::to_unicase(&ban_mask_for_timeout));
                     
                                                         // Notificar a los usuarios del canal
                                                         let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
@@ -792,7 +792,7 @@ impl super::MainState {
                                         unset_mode_args.push(norm_bmask.clone());
 
                                         gban.remove(&norm_bmask);
-                                        chanobj.ban_info.remove(&norm_bmask);
+                                        chanobj.ban_info.remove(&crate::state::structs::to_unicase(&norm_bmask));
                                         #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
@@ -816,7 +816,7 @@ impl super::MainState {
                                 // print
                                 if let Some(ban) = &chanobj.modes.global_ban {
                                     for b in ban {
-                                        if let Some(ban_info) = chanobj.ban_info.get(&b.clone()) {
+                                        if let Some(ban_info) = chanobj.ban_info.get(&crate::state::structs::to_unicase(&b.clone())) {
                                             self.feed_msg(
                                                 &mut conn_state.stream,
                                                 RplBanList367 {
@@ -2376,7 +2376,7 @@ mod test {
                     ])),
                     channel.modes.ban
                 );
-                let set_time = channel.ban_info.get("nick*!*@*").unwrap().set_time;
+                let set_time = channel.ban_info.get(&crate::state::structs::to_unicase("nick*!*@*")).unwrap().set_time;
                 assert_eq!(
                     HashMap::from([
                         (
