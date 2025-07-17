@@ -53,7 +53,7 @@ fn main() -> Result<(), Box<dyn Error>> {
                 println!("ZeusiRCd2 daemon started successfully");
             }
             Err(e) => {
-                eprintln!("Failed to start daemon: {}", e);
+                eprintln!("Failed to start daemon: {e}");
                 std::process::exit(1);
             }
         }
@@ -78,7 +78,7 @@ async fn tokio_main(cli: Cli) -> Result<(), Box<dyn Error>> {
         // and await for end
         for handle in handles {
             if let Err(e) = handle.await {
-                error!("Error en handles: {}", e);
+                error!("Error en handles: {e}");
             }
         }
     }

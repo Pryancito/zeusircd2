@@ -76,33 +76,16 @@ pub mod mysql_impl {
             password: &str,
             user: &str,
             registration_time: SystemTime,
-            email: Option<&str>,
-            url: Option<&str>,
-            vhost: Option<&str>,
-            last_vhost: Option<SystemTime>,
-            noaccess: bool,
-            noop: bool,
-            showmail: bool,
         ) -> Result<(), Box<dyn Error + Send + Sync>> {
             if let Some(pool) = &self.pool {
                 let timestamp = registration_time
                     .duration_since(SystemTime::UNIX_EPOCH)?
                     .as_secs();
-                let last_vhost_timestamp = last_vhost
-                    .map(|lv| lv.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()))
-                    .transpose()?;
-                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+                sqlx::query("INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)")
                     .bind(nick)
                     .bind(password)
                     .bind(user)
                     .bind(timestamp as i64)
-                    .bind(email)
-                    .bind(url)
-                    .bind(vhost)
-                    .bind(last_vhost_timestamp.map(|t| t as i64))
-                    .bind(noaccess)
-                    .bind(noop)
-                    .bind(showmail)
                     .execute(pool)
                     .await?;
             }
