@@ -130,7 +130,7 @@ impl NickDatabase for SQLiteNickDatabase {
         let db_guard = self.connection.lock().unwrap();
 
         let query = "UPDATE nicks SET password = ? WHERE nick = ?";
-        let mut statement = db_guard.prepare(&query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
+        let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
         statement.bind((1, password)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;

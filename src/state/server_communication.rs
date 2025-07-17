@@ -196,11 +196,7 @@ impl ServerCommunication {
                 let source = self.parse_user(result.get_user().to_string());
                 let snick = source.unwrap().nick.clone();
                 // Crear un mensaje que simule venir del servidor
-                let server_message = format!("{} {} :{}",
-                    command,
-                    channel,
-                    text
-                );
+                let server_message = format!("{command} {channel} :{text}");
                 let state = self.state.read().await;
                 // Verificar si el canal existe
                 if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
@@ -229,12 +225,7 @@ impl ServerCommunication {
                 let mode = parts[4];
                 let mask = parts[5];
 
-                let server_message = format!("{} {} {} {}",
-                    command,
-                    channel,
-                    mode,
-                    mask
-                );
+                let server_message = format!("{command} {channel} {mode} {mask}");
 
                 // Procesar modo de ban (+b o -b)
                 if mode == "+B" {
@@ -269,7 +260,7 @@ impl ServerCommunication {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
                             if user.server != result.get_server() {
                                 let _ = user.send_msg_display(
-                                    &result.get_user(),
+                                    result.get_user(),
                                     server_message.as_str()
                                 );
                             }
@@ -298,7 +289,7 @@ impl ServerCommunication {
                                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                             if user.server != result.get_server() {
                                                 let _ = user.send_msg_display(
-                                                    &result.get_user(),
+                                                    result.get_user(),
                                                     server_message.as_str()
                                                 );
                                             }
@@ -310,17 +301,17 @@ impl ServerCommunication {
                     }
                 } else if mode == "-B" {
                     let mut state = self.state.write().await;
-                    let chanobj: &mut Channel = state.channels.get_mut(&crate::state::structs::to_unicase(&channel.to_string())).ok_or("Canal no encontrado")?;
+                    let chanobj: &mut Channel = state.channels.get_mut(&crate::state::structs::to_unicase(channel)).ok_or("Canal no encontrado")?;
                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
                     gban.remove(&norm_bmask);
                     chanobj.ban_info.remove(&crate::state::structs::to_unicase(&norm_bmask));
                     let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
-                        if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
+                        if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                             if user.server != result.get_server() {
                                 let _ = user.send_msg_display(
-                                    &result.get_user(),
+                                    result.get_user(),
                                     server_message.as_str()
                                 );
                             }
