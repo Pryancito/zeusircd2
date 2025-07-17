@@ -612,7 +612,6 @@ impl super::MainState {
         // Parsear los modos almacenados y aplicarlos al canal
         // Los modos se almacenan como string (ej: "+ntk clave123")
         let mut chars = modes_str.chars().peekable();
-        
         while let Some(ch) = chars.next() {
             match ch {
                 '+' => {
@@ -736,6 +735,7 @@ impl super::MainState {
                 }
             }
         }
+        
     }
 }
 

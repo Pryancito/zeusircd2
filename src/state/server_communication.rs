@@ -204,10 +204,10 @@ impl ServerCommunication {
                 let state = self.state.read().await;
                 // Verificar si el canal existe
                 if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
-                    let nicks: Vec<&String> = chanobj.users.keys().collect();
+                    let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if *nick != snick {
-                            if let Some(user) = state.users.get(&crate::state::structs::to_unicase(nick)) {
+                            if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&nick)) {
                                 if user.server != result.get_server() {
                                     let _ = user.send_msg_display(
                                         &result.get_user(),
@@ -253,7 +253,7 @@ impl ServerCommunication {
                         (mask.to_string(), None)
                     };
                     chanobj.ban_info.insert(
-                        crate::state::structs::to_unicase(norm_bmask.clone()),
+                        crate::state::structs::to_unicase(&norm_bmask),
                         BanInfo {
                             who: snick.to_string(),
                             set_time: SystemTime::now()
@@ -264,7 +264,7 @@ impl ServerCommunication {
                         },
                     );
                     chanobj.modes.global_ban = Some(gban);
-                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                    let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
                             if user.server != result.get_server() {
@@ -290,10 +290,10 @@ impl ServerCommunication {
                             if let Some(channel) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel_name)) {
                                 if let Some(ban_set) = &mut channel.modes.global_ban {
                                     ban_set.remove(&ban_mask_for_timeout);
-                                    channel.ban_info.remove(&crate::state::structs::to_unicase(ban_mask_for_timeout));
+                                    channel.ban_info.remove(&crate::state::structs::to_unicase(&ban_mask_for_timeout));
 
                                     // Notificar a los usuarios del canal
-                                    let nicks: Vec<String> = channel.users.keys().cloned().collect();
+                                    let nicks: Vec<String> = channel.users.keys().map(|k| k.to_string()).collect();
                                     for nick in nicks {
                                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                             if user.server != result.get_server() {
@@ -314,8 +314,8 @@ impl ServerCommunication {
                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
                     gban.remove(&norm_bmask);
-                    chanobj.ban_info.remove(&crate::state::structs::to_unicase(norm_bmask));
-                    let nicks: Vec<String> = chanobj.users.keys().cloned().collect();
+                    chanobj.ban_info.remove(&crate::state::structs::to_unicase(&norm_bmask));
+                    let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
                             if user.server != result.get_server() {
