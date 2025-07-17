@@ -96,7 +96,7 @@ impl AsyncRead for DualTcpStream {
                         Poll::Ready(Ok(()))
                     }
                     Poll::Ready(Some(Ok(_))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Ready(None) => Poll::Ready(Ok(())),
                     Poll::Pending => Poll::Pending,
                 }
@@ -109,7 +109,7 @@ impl AsyncRead for DualTcpStream {
                         Poll::Ready(Ok(()))
                     }
                     Poll::Ready(Some(Ok(_))) => Poll::Ready(Ok(())),
-                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Some(Err(e))) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Ready(None) => Poll::Ready(Ok(())),
                     Poll::Pending => Poll::Pending,
                 }
@@ -133,10 +133,10 @@ impl AsyncWrite for DualTcpStream {
                     Poll::Ready(Ok(())) => {
                         match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string().into())) {
                             Ok(()) => Poll::Ready(Ok(buf.len())),
-                            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                            Err(e) => Poll::Ready(Err(std::io::Error::other(e))),
                         }
                     }
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }
@@ -146,10 +146,10 @@ impl AsyncWrite for DualTcpStream {
                     Poll::Ready(Ok(())) => {
                         match Pin::new(stream).start_send(Message::Text(String::from_utf8_lossy(buf).to_string().into())) {
                             Ok(()) => Poll::Ready(Ok(buf.len())),
-                            Err(e) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                            Err(e) => Poll::Ready(Err(std::io::Error::other(e))),
                         }
                     }
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }
@@ -164,7 +164,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::WebSocketStream(stream) => {
                 match Pin::new(stream).poll_flush(cx) {
                     Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }
@@ -172,7 +172,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::SecureWebSocketStream(stream) => {
                 match Pin::new(stream).poll_flush(cx) {
                     Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }
@@ -187,7 +187,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::WebSocketStream(stream) => {
                 match Pin::new(stream).poll_close(cx) {
                     Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }
@@ -195,7 +195,7 @@ impl AsyncWrite for DualTcpStream {
             DualTcpStream::SecureWebSocketStream(stream) => {
                 match Pin::new(stream).poll_close(cx) {
                     Poll::Ready(Ok(())) => Poll::Ready(Ok(())),
-                    Poll::Ready(Err(e)) => Poll::Ready(Err(io::Error::new(io::ErrorKind::Other, e))),
+                    Poll::Ready(Err(e)) => Poll::Ready(Err(std::io::Error::other(e))),
                     Poll::Pending => Poll::Pending,
                 }
             }

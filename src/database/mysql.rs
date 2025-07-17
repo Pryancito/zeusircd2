@@ -17,18 +17,6 @@ pub mod mysql_impl {
         }
     }
 
-    impl Drop for MysqlNickDatabase {
-        fn drop(&mut self) {
-            let _ = self.close();
-        }
-    }
-
-    impl Drop for MysqlChannelDatabase {
-        fn drop(&mut self) {
-            let _ = self.close();
-        }
-    }
-
     #[async_trait]
     impl NickDatabase for MysqlNickDatabase {
         async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
@@ -37,13 +25,6 @@ pub mod mysql_impl {
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
-            Ok(())
-        }
-
-        async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-            if let Some(pool) = self.pool.take() {
-                pool.close().await;
-            }
             Ok(())
         }
 
@@ -142,7 +123,6 @@ pub mod mysql_impl {
             &mut self,
             nick: &str,
             user: Option<&str>,
-            registration_time: Option<SystemTime>,
             email: Option<&str>,
             url: Option<&str>,
             vhost: Option<&str>,
@@ -155,9 +135,6 @@ pub mod mysql_impl {
                 let mut set_clauses = Vec::new();
                 if user.is_some() {
                     set_clauses.push("user = ?");
-                }
-                if registration_time.is_some() {
-                    set_clauses.push("registration_time = ?");
                 }
                 if email.is_some() {
                     set_clauses.push("email = ?");
@@ -189,10 +166,6 @@ pub mod mysql_impl {
                     let mut query = sqlx::query(&query_str);
                     if let Some(u) = user {
                         query = query.bind(u);
-                    }
-                    if let Some(rt) = registration_time {
-                        let timestamp = rt.duration_since(SystemTime::UNIX_EPOCH)?.as_secs();
-                        query = query.bind(timestamp as i64);
                     }
                     if let Some(e) = email {
                         query = query.bind(e);
@@ -251,13 +224,6 @@ pub mod mysql_impl {
                 .connect(db_config)
                 .await?;
             self.pool = Some(pool);
-            Ok(())
-        }
-
-        async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-            if let Some(pool) = self.pool.take() {
-                pool.close().await;
-            }
             Ok(())
         }
 

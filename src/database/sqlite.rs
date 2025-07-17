@@ -18,28 +18,11 @@ impl SQLiteNickDatabase {
     }
 }
 
-impl Drop for SQLiteNickDatabase {
-    fn drop(&mut self) {
-        let _ = self.close();
-    }
-}
-
-impl Drop for SQLiteChannelDatabase {
-    fn drop(&mut self) {
-        let _ = self.close();
-    }
-}
-
 #[async_trait]
 impl NickDatabase for SQLiteNickDatabase {
     async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
         let conn = Connection::open(db_config)?;
         self.connection = Mutex::new(conn);
-        Ok(())
-    }
-
-    async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        drop(self.connection.lock().unwrap());
         Ok(())
     }
 
@@ -146,7 +129,7 @@ impl NickDatabase for SQLiteNickDatabase {
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
 
-        let query = format!("UPDATE nicks SET password = ? WHERE nick = ?");
+        let query = "UPDATE nicks SET password = ? WHERE nick = ?";
         let mut statement = db_guard.prepare(&query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
         statement.bind((1, password)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
@@ -158,7 +141,6 @@ impl NickDatabase for SQLiteNickDatabase {
         &mut self,
         nick: &str,
         user: Option<&str>,
-        registration_time: Option<SystemTime>,
         email: Option<&str>,
         url: Option<&str>,
         vhost: Option<&str>,
@@ -171,13 +153,6 @@ impl NickDatabase for SQLiteNickDatabase {
         let mut updates = Vec::new();
         if let Some(u) = user {
             updates.push(("user = ?", u.to_string()));
-        }
-        if let Some(rt) = registration_time {
-            let timestamp = rt
-                .duration_since(SystemTime::UNIX_EPOCH)
-                .map_err(|_| "Failed to get UNIX timestamp")?
-                .as_secs();
-            updates.push(("registration_time = ?", timestamp.to_string()));
         }
         if let Some(e) = email {
             updates.push(("email = ?", e.to_string()));
@@ -210,7 +185,7 @@ impl NickDatabase for SQLiteNickDatabase {
         }
 
         let set_clause = updates.iter().map(|(field, _)| *field).collect::<Vec<&str>>().join(", ");
-        let query = format!("UPDATE nicks SET {} WHERE nick = ?", set_clause);
+        let query = format!("UPDATE nicks SET {set_clause} WHERE nick = ?");
         let mut statement = db_guard.prepare(&query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
         let mut bind_index = 1;
@@ -249,11 +224,6 @@ impl ChannelDatabase for SQLiteChannelDatabase {
     async fn connect(&mut self, db_config: &str) -> Result<(), Box<dyn Error + Send + Sync>> {
         let conn = Connection::open(db_config)?;
         self.connection = Mutex::new(conn);
-        Ok(())
-    }
-
-    async fn close(&mut self) -> Result<(), Box<dyn Error + Send + Sync>> {
-        drop(self.connection.lock().unwrap());
         Ok(())
     }
 
@@ -361,7 +331,7 @@ impl ChannelDatabase for SQLiteChannelDatabase {
         }
 
         let set_clause = updates.join(", ");
-        let query = format!("UPDATE channels SET {} WHERE channel_name = ?", set_clause);
+        let query = format!("UPDATE channels SET {set_clause} WHERE channel_name = ?");
         let mut statement = db_guard.prepare(&query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
 
         let mut bind_index = 1;
