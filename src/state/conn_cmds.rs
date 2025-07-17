@@ -23,8 +23,6 @@ use std::ops::DerefMut;
 use std::sync::atomic::Ordering;
 use crate::utils::argon2_verify_password_async;
 #[cfg(any(feature = "sqlite", feature = "mysql"))]
-use base64;
-#[cfg(any(feature = "sqlite", feature = "mysql"))]
 use base64::Engine;
 struct SupportTokenIntValue {
     name: &'static str,

@@ -73,7 +73,7 @@ impl super::MainState {
 
                     let password_hash = argon2_hash_password(password);
 
-                    db.add_nick(nick, &password_hash, &conn_state.user_state.source, SystemTime::now(), None, None, None, None, false, false, false).await?;
+                    db.add_nick(nick, &password_hash, &conn_state.user_state.source, SystemTime::now()).await?;
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick '{}' has been registered.", client, nick)).await?;
                 } else {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;

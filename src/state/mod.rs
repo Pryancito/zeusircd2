@@ -785,7 +785,7 @@ fn initialize_dns_resolver() {
 }
 
 #[cfg(feature = "dns_lookup")]
-pub(self) fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
+fn dns_lookup(sender: oneshot::Sender<Option<String>>, ip: IpAddr) {
     let r = DNS_RESOLVER.read().unwrap();
     let resolver = (*r).clone().unwrap();
     tokio::spawn(dns_lookup_process(resolver, sender, ip));
