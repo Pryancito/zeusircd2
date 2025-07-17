@@ -71,37 +71,19 @@ impl NickDatabase for SQLiteNickDatabase {
         password: &str,
         user: &str,
         registration_time: SystemTime,
-        email: Option<&str>,
-        url: Option<&str>,
-        vhost: Option<&str>,
-        last_vhost: Option<SystemTime>,
-        noaccess: bool,
-        noop: bool,
-        showmail: bool,
     ) -> Result<(), Box<dyn Error + Send + Sync>> {
         let db_guard = self.connection.lock().unwrap();
         let timestamp = registration_time
             .duration_since(SystemTime::UNIX_EPOCH)
             .map_err(|_| "Failed to get UNIX timestamp")?
             .as_secs();
-        let last_vhost_timestamp = last_vhost
-            .map(|lv| lv.duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_secs()))
-            .transpose()
-            .map_err(|_| "Failed to get UNIX timestamp for last_vhost")?;
         let query =
-            "INSERT INTO nicks (nick, password, user, registration_time, email, url, vhost, last_vhost, noaccess, noop, showmail) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+            "INSERT INTO nicks (nick, password, user, registration_time) VALUES (?, ?, ?, ?)";
         let mut statement = db_guard.prepare(query).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((1, nick)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((2, password)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((3, user)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.bind((4, timestamp as i64)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((5, email)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((6, url)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((7, vhost)).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((8, last_vhost_timestamp.map(|t| t as i64))).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((9, if noaccess { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((10, if noop { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
-        statement.bind((11, if showmail { 1 } else { 0 })).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)?;
         statement.next().map(|_| ()).map_err(|e| Box::new(e) as Box<dyn Error + Send + Sync>)
     }
 
