@@ -677,8 +677,7 @@ impl super::MainState {
                             )?;
                         }
                         for mode in &arg {
-                            let msg = format!("MODE {} +{} {}",
-                                chname_str, mode, user_nick);
+                            let msg = format!("MODE {chname_str} +{mode} {user_nick}");
                             state.users.get(&crate::state::structs::to_unicase(&nick.clone())).unwrap().send_msg_display(
                                 &self.config.name,
                                 msg.as_str(),
@@ -756,9 +755,9 @@ impl super::MainState {
                 // send message
                 if do_it {
                     let part_msg = if let Some(r) = reason {
-                        format!("PART {} :{}", channel, r)
+                        format!("PART {channel} :{r}")
                     } else {
-                        format!("PART {}", channel)
+                        format!("PART {channel}")
                     };
                     let user = state.users.get(&crate::state::structs::to_unicase(&user_nick)).unwrap();
                     let source = if user.modes.cloacked {
@@ -1288,7 +1287,7 @@ impl super::MainState {
             }
             let chanobj = state.channels.get(&crate::state::structs::to_unicase(channel)).unwrap();
             for ku in &kicked {
-                let kick_msg = format!("KICK {} {} :{}", channel, ku, comment.unwrap_or("Kicked"));
+                let kick_msg = format!("KICK {channel} {ku} :{}", comment.unwrap_or("Kicked"));
                 for nick in chanobj.users.keys() {
                     state
                         .users

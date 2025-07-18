@@ -138,7 +138,7 @@ impl ServerCommunication {
         
         let mut consumer = channel.basic_consume(
             &self.queue,
-            &"",
+            "",
             BasicConsumeOptions {
                 no_ack: false,
                 ..Default::default()
@@ -206,7 +206,7 @@ impl ServerCommunication {
                             if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&nick)) {
                                 if user.server != result.get_server() {
                                     let _ = user.send_msg_display(
-                                        &result.get_user(),
+                                        result.get_user(),
                                         server_message.as_str()
                                     );
                                 }

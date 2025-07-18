@@ -62,7 +62,7 @@ impl super::MainState {
                         let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                         for nick in nicks {
                             if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                                let mensaje = format!("MODE {} +r", channel);
+                                let mensaje = format!("MODE {channel} +r");
                                 let _ = user.send_msg_display(&self.config.name, &mensaje);
                             }
                         }
@@ -104,7 +104,7 @@ impl super::MainState {
                                 let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                 for nick in nicks {
                                     if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                                        let mensaje = format!("MODE {} -r", channel);
+                                        let mensaje = format!("MODE {channel} -r");
                                         let _ = user.send_msg_display(&self.config.name, &mensaje);
                                     }
                                 }
@@ -398,7 +398,7 @@ impl super::MainState {
                             // Update topic in internal IRCd logic
                             chanobj.topic = Some(ChannelTopic::new_with_nick(new_topic.clone(), nick.to_string()));
                             
-                            let topic_msg = format!("TOPIC {} :{}", channel, new_topic);
+                            let topic_msg = format!("TOPIC {channel} :{new_topic}");
                             // Collect user nicks to avoid borrowing conflict
                             let user_nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                             drop(state); // Release mutable borrow
@@ -574,7 +574,7 @@ impl super::MainState {
                         self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {client} :Only the channel founder or an IRCop can transfer ownership.")).await?;
                     }
                     _ => {
-                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {client} :Unknown command '{}'. Use /CS HELP for available commands.", command)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "ChanServ", format!("NOTICE {client} :Unknown command '{command}'. Use /CS HELP for available commands.")).await?;
                     }
                 }
             }

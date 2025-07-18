@@ -549,7 +549,7 @@ impl super::MainState {
                                 state.insert_to_nick_history(&old_nick, user.history_entry.clone());
                                 
                                 // Insertar con el nuevo nick
-                                state.users.insert(crate::state::structs::to_unicase(&target_nick.to_string()), user.clone());
+                                state.users.insert(crate::state::structs::to_unicase(&target_nick), user.clone());
                             }
                             
                             // Obtener el nuevo client_name después de las modificaciones
@@ -557,7 +557,7 @@ impl super::MainState {
                             self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {new_client} :You have been successfully identified as {target_nick}.")).await?;
                             
                             // Notificar a todos los usuarios sobre el cambio de nick
-                            let nick_change_msg = format!("NICK :{}", target_nick);
+                            let nick_change_msg = format!("NICK :{target_nick}");
                             for u in state.users.values() {
                                 let _ = u.send_msg_display(&old_source, nick_change_msg.clone());
                             }
