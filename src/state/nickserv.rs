@@ -493,12 +493,12 @@ impl super::MainState {
                                             for nicknames in nicks {
                                                 if nicknames != target_nick.to_string() && nicknames != old_nick.to_string() {
                                                     if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nicknames)) {
-                                                        let part_msg = format!("PART {} :vHost", channel);
+                                                        let part_msg = format!("PART {channel} :vHost");
                                                         let _ = user.send_msg_display(
                                                             &old_source,
                                                             part_msg.as_str()
                                                         );
-                                                        let join_msg = format!("JOIN :{}", channel);
+                                                        let join_msg = format!("JOIN :{channel}");
                                                         let _ = user.send_msg_display(
                                                             &conn_state.user_state.source,
                                                             join_msg.as_str()
@@ -517,8 +517,7 @@ impl super::MainState {
                                                                 arg.push("v");
                                                             }
                                                             for mode in &arg {
-                                                                let msg = format!("MODE {} +{} {}",
-                                                                    channel, mode, target_nick);
+                                                                let msg = format!("MODE {channel} +{mode} {target_nick}");
                                                                 let _ = user.send_msg_display(
                                                                     &self.config.name,
                                                                     msg.as_str(),
@@ -549,7 +548,7 @@ impl super::MainState {
                                 state.insert_to_nick_history(&old_nick, user.history_entry.clone());
                                 
                                 // Insertar con el nuevo nick
-                                state.users.insert(crate::state::structs::to_unicase(&target_nick), user.clone());
+                                state.users.insert(crate::state::structs::to_unicase(target_nick), user.clone());
                             }
                             
                             // Obtener el nuevo client_name después de las modificaciones

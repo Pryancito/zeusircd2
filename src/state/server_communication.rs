@@ -26,12 +26,6 @@ pub(crate) struct ServerCommunication {
     pub(super) state: Arc<RwLock<VolatileState>>,
 }
 
-impl Drop for ServerCommunication {
-    fn drop(&mut self) {
-        let _ = self.disconnect_server();
-    }
-}
-
 impl ServerCommunication {
     pub(crate) async fn new(state: &Arc<RwLock<VolatileState>>, amqp_url: &str, server: &String, exchange: &str, queue: &str) -> Self {
         let server_comm = Self {
@@ -92,22 +86,6 @@ impl ServerCommunication {
             )
             .await?;
         info!("Connected to AMQP. Channel: {:?}", channel.id());
-        Ok(())
-    }
-
-    pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
-        if !self.connected {
-            return Err("Not connected to this server".into());
-        }
-
-        // Cerrar la conexión AMQP
-        let mut conn = self.connection.lock().await;
-        if let Some(connection) = conn.take() {
-            connection.close(200, "Cierre normal").await?;
-            self.connected = false;
-        }
-        info!("Disconnected from AMQP.");
-
         Ok(())
     }
 
@@ -232,7 +210,7 @@ impl ServerCommunication {
                     let mut state = self.state.write().await;
                     let source = self.parse_user(result.get_user().to_string());
                     let snick = source.unwrap().nick.clone();
-                    let chanobj: &mut Channel = state.channels.get_mut(&crate::state::structs::to_unicase(&channel.to_string())).ok_or("Canal no encontrado")?;
+                    let chanobj: &mut Channel = state.channels.get_mut(&crate::state::structs::to_unicase(channel)).ok_or("Canal no encontrado")?;
                     let mut gban = chanobj.modes.global_ban.take().unwrap_or_default();
                     let norm_bmask = normalize_sourcemask(mask);
                     gban.insert(norm_bmask.clone());
