@@ -35,53 +35,53 @@ impl super::MainState {
         let nick = if let Some(nick) = &conn_state.user_state.nick {
             nick
         } else {
-            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :You don't have a nick.", client)).await?;
+            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :You don't have a nick.")).await?;
             return Ok(());
         };
 
         match subcommand.to_lowercase().as_str() {
             "register" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Password is required.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Password is required.")).await?;
                     return Ok(());
                 }
                 let password = params[0];
                 
                 // Validate password
                 if password.len() < 6 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Password must be at least 6 characters long.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Password must be at least 6 characters long.")).await?;
                     return Ok(());
                 }
                 
                 if password.len() > 32 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Password cannot be longer than 32 characters.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Password cannot be longer than 32 characters.")).await?;
                     return Ok(());
                 }
                 
                 // Check that password doesn't contain disallowed characters
                 if !password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Password contains disallowed characters.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Password contains disallowed characters.")).await?;
                     return Ok(());
                 }
                 
                 if let Some(db_arc) = &self.databases.nick_db {
                     let mut db = db_arc.write().await;
                     if db.get_nick_info(nick).await?.is_some() {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick '{}' is already registered.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Nick '{nick}' is already registered.")).await?;
                         return Ok(());
                     }
 
                     let password_hash = argon2_hash_password(password);
 
                     db.add_nick(nick, &password_hash, &conn_state.user_state.source, SystemTime::now()).await?;
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick '{}' has been registered.", client, nick)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Nick '{nick}' has been registered.")).await?;
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Database is not configured.")).await?;
                 }
             }
             "drop" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Password or nick is required.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Password or nick is required.")).await?;
                     return Ok(());
                 }
 
@@ -99,30 +99,30 @@ impl super::MainState {
                         // Operator can delete any nick
                         if db.get_nick_info(param).await?.is_some() {
                             db.delete_nick(param).await?;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick '{}' has been deleted by an operator.", client, param)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Nick '{param}' has been deleted by an operator.")).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick '{}' does not exist.", client, param)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Nick '{param}' does not exist.")).await?;
                         }
                     } else {
                         // Normal user must provide password
                         if let Some(nick_password) = db.get_nick_password(nick).await? {
                             if argon2_hash_password(param) == nick_password {
                                 db.delete_nick(nick).await?;
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your nick '{}' has been deleted.", client, nick)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your nick '{nick}' has been deleted.")).await?;
                             } else {
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Incorrect password.", client)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Incorrect password.")).await?;
                             }
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your nick is not registered.", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your nick is not registered.")).await?;
                         }
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Database is not configured.")).await?;
                 }
             }
             "email" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS EMAIL <email> or /NS EMAIL OFF", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS EMAIL <email> or /NS EMAIL OFF")).await?;
                     return Ok(());
                 }
 
@@ -136,28 +136,28 @@ impl super::MainState {
                         if email.to_lowercase() == "off" {
                             // Disable email
                             db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), None, info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your email has been disabled.", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your email has been disabled.")).await?;
                         } else {
                             // Validate email format
                             if !email.contains('@') || !email.contains('.') {
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid email format.", client)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid email format.")).await?;
                                 return Ok(());
                             }
                             
                             // Update email
                             db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), Some(email), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your email has been updated to: {}", client, email)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your email has been updated to: {email}")).await?;
                         }
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your nick is not registered.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your nick is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Database is not configured.")).await?;
                 }
             }
             "url" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS URL <url> or /NS URL OFF", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS URL <url> or /NS URL OFF")).await?;
                     return Ok(());
                 }
 
@@ -171,28 +171,28 @@ impl super::MainState {
                         if url.to_lowercase() == "off" {
                             // Disable URL
                             db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), info.2.as_deref(), None, info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your URL has been disabled.", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your URL has been disabled.")).await?;
                         } else {
                             // Validate basic URL format
                             if !url.starts_with("http://") && !url.starts_with("https://") {
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :URL must start with http:// or https://", client)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :URL must start with http:// or https://")).await?;
                                 return Ok(());
                             }
                             
                             // Update URL
                             db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), info.2.as_deref(), Some(url), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(info.8)).await?;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your URL has been updated to: {}", client, url)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your URL has been updated to: {url}")).await?;
                         }
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Your nick is not registered.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your nick is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Database is not configured.")).await?;
                 }
             }
             "noaccess" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS NOACCESS <on|off>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS NOACCESS <on|off>")).await?;
                     return Ok(());
                 }
 
@@ -203,7 +203,7 @@ impl super::MainState {
                     "on" => true,
                     "off" => false,
                     _ => {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid action. Use 'on' or 'off'.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid action. Use 'on' or 'off'.")).await?;
                         return Ok(());
                     }
                 };
@@ -217,17 +217,17 @@ impl super::MainState {
                         db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(new_noaccess), Some(info.6), Some(info.7)).await?;
                         
                         let status = if new_noaccess { "activada" } else { "desactivada" };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The noaccess option for {} has been {}.", client, nick, status)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The noaccess option for {nick} has been {status}.")).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
             }
             "noop" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS NOOP <nick> <on|off>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS NOOP <nick> <on|off>")).await?;
                     return Ok(());
                 }
 
@@ -236,7 +236,7 @@ impl super::MainState {
                 
                 // Validar el nick objetivo
                 if let Err(_) = validate_username(target_nick) {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid nick.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid nick.")).await?;
                     return Ok(());
                 }
 
@@ -245,7 +245,7 @@ impl super::MainState {
                     "on" => true,
                     "off" => false,
                     _ => {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid action. Use 'on' or 'off'.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid action. Use 'on' or 'off'.")).await?;
                         return Ok(());
                     }
                 };
@@ -259,17 +259,17 @@ impl super::MainState {
                         db.update_nick_info(target_nick, Some(conn_state.user_state.source.as_str()), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(new_noop), Some(info.7)).await?;
                         
                         let status = if new_noop { "activada" } else { "desactivada" };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The noop option for {} has been {}.", client, target_nick, status)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The noop option for {target_nick} has been {status}.")).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, target_nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {target_nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
             }
             "showmail" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS SHOWMAIL <on|off>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS SHOWMAIL <on|off>")).await?;
                     return Ok(());
                 }
 
@@ -281,7 +281,7 @@ impl super::MainState {
                     "on" => true,
                     "off" => false,
                     _ => {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid action. Use 'on' or 'off'.", client)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid action. Use 'on' or 'off'.")).await?;
                         return Ok(());
                     }
                 };
@@ -295,17 +295,17 @@ impl super::MainState {
                         db.update_nick_info(nick, Some(conn_state.user_state.source.as_str()), info.2.as_deref(), info.3.as_deref(), info.4.as_deref(), info.5, Some(info.6), Some(info.7), Some(new_showmail)).await?;
                         
                         let status = if new_showmail { "activada" } else { "desactivada" };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The showmail option for {} has been {}.", client, nick, status)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The showmail option for {nick} has been {status}.")).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
             }
             "password" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS PASSWORD <password>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS PASSWORD <password>")).await?;
                     return Ok(());
                 }
 
@@ -313,24 +313,24 @@ impl super::MainState {
                 
                 // Validar la contraseña
                 if new_password.len() < 6 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password must be at least 6 characters long.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password must be at least 6 characters long.")).await?;
                     return Ok(());
                 }
                 
                 if new_password.len() > 32 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password cannot be more than 32 characters long.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password cannot be more than 32 characters long.")).await?;
                     return Ok(());
                 }
                 
                 // Verificar que la contraseña no contenga caracteres no permitidos
                 if !new_password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password contains invalid characters.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password contains invalid characters.")).await?;
                     return Ok(());
                 }
                 
                 // Validar que la contraseña no esté vacía
                 if new_password.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password cannot be empty.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password cannot be empty.")).await?;
                     return Ok(());
                 }
 
@@ -340,15 +340,15 @@ impl super::MainState {
                     // Cambiar la contraseña
                     db.update_nick_password(nick, new_password).await?;
                     
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password for {} has been changed successfully.", client, nick)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password for {nick} has been changed successfully.")).await?;
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
                 
             }
             "vhost" => {
                 if params.is_empty() {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS VHOST <off|tu.ip.virtual>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS VHOST <off|tu.ip.virtual>")).await?;
                     return Ok(());
                 }
 
@@ -372,7 +372,7 @@ impl super::MainState {
                                     let remaining = 86400 - duration.as_secs();
                                     let hours = remaining / 3600;
                                     let minutes = (remaining % 3600) / 60;
-                                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :You must wait {}h {}m before changing your vhost again.", client, hours, minutes)).await?;
+                                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :You must wait {hours}h {minutes}m before changing your vhost again.")).await?;
                                     return Ok(());
                                 }
                             }
@@ -392,17 +392,17 @@ impl super::MainState {
                         } else { 
                             "desactivado".to_string()
                         };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Tu vhost ha sido {}.", client, status)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Tu vhost ha sido {status}.")).await?;
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
             }
             "identify" => {
                 if params.len() < 2 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Usage: /NS IDENTIFY <nickname> <password>", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Usage: /NS IDENTIFY <nickname> <password>")).await?;
                     return Ok(());
                 }
 
@@ -411,24 +411,24 @@ impl super::MainState {
                 
                 // Validar la contraseña
                 if password.len() < 6 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password must be at least 6 characters long.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password must be at least 6 characters long.")).await?;
                     return Ok(());
                 }
                 
                 if password.len() > 32 {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password cannot be more than 32 characters long.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password cannot be more than 32 characters long.")).await?;
                     return Ok(());
                 }
                 
                 // Verificar que la contraseña no contenga caracteres no permitidos
                 if !password.chars().all(|c| c.is_ascii_alphanumeric() || c.is_ascii_punctuation()) {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The password contains invalid characters.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The password contains invalid characters.")).await?;
                     return Ok(());
                 }
                 
                 // Validar el nickname objetivo
                 if let Err(_) = validate_username(target_nick) {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Invalid nick.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid nick.")).await?;
                     return Ok(());
                 }
                 
@@ -554,7 +554,7 @@ impl super::MainState {
                             
                             // Obtener el nuevo client_name después de las modificaciones
                             let new_client = conn_state.user_state.client_name();
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :You have been successfully identified as {}.", new_client, target_nick)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {new_client} :You have been successfully identified as {target_nick}.")).await?;
                             
                             // Notificar a todos los usuarios sobre el cambio de nick
                             let nick_change_msg = format!("NICK :{}", target_nick);
@@ -563,89 +563,89 @@ impl super::MainState {
                             }
                             
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Incorrect password.", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Incorrect password.")).await?;
                         }
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, target_nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {target_nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The database is not configured.")).await?;
                 }
             }
             "info" => {
                 if let Some(db_arc) = &self.databases.nick_db {
                     let db = db_arc.read().await;
                     if let Some((user, registration_date, email, url, vhost, last_vhost, noaccess, noop, showmail)) = db.get_nick_info(nick).await? {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Nick information: {}", client, nick)).await?;
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :User: {}", client, user)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Nick information: {nick}")).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :User: {user}")).await?;
                         if let Some(vhost) = &vhost {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Vhost: {}", client, vhost)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Vhost: {vhost}")).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Vhost: Not configured", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Vhost: Not configured")).await?;
                         }
                         if let Some(last_vhost) = &last_vhost {
                             if let Ok(duration) = SystemTime::now().duration_since(*last_vhost) {
                                 let days = duration.as_secs() / 86400;
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Last vhost change: {} days", client, days)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Last vhost change: {days} days")).await?;
                             }
                         }
                         if showmail {
                             if let Some(email) = &email {
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: {}", client, email)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Email: {email}")).await?;
                             } else {
-                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: No set", client)).await?;
+                                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Email: No set")).await?;
                             }
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Email: Not shown", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Email: Not shown")).await?;
                         }
                         if let Some(url) = &url {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :URL: {}", client, url)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :URL: {url}")).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :URL: No set", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :URL: No set")).await?;
                         }
                         if let Ok(duration) = SystemTime::now().duration_since(registration_date) {
                             let days = duration.as_secs() / 86400;
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Registered {} days ago", client, days)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Registered {days} days ago")).await?;
                         }
                         if noaccess {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No access: Enabled", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :No access: Enabled")).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No access: Disabled", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :No access: Disabled")).await?;
                         }
                         if noop { 
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No op: Enabled", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :No op: Enabled")).await?;
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :No op: Disabled", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :No op: Disabled")).await?;
                         }
                         if showmail {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Showmail: Enabled", client)).await?;  
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Showmail: Enabled")).await?;  
                         } else {
-                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Showmail: Disabled", client)).await?;
+                            self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Showmail: Disabled")).await?;
                         }
                     } else {
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :The nick {} is not registered.", client, nick)).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {nick} is not registered.")).await?;
                     }
                 } else {
-                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Database is not configured.", client)).await?;
+                    self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Database is not configured.")).await?;
                 }
             }
             "help" => {
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :NickServ commands:", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  REGISTER <password> - Register your nick", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  DROP <password> - Delete your nick registration", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  EMAIL <email|OFF> - Set or disable your email", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  URL <url|OFF> - Set or disable your URL", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  VHOST <vhost|OFF> - Set or disable your vhost", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  NOACCESS <on|off> - Enable or disable no access mode", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  NOOP <on|off> - Enable or disable no op mode", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  SHOWMAIL <on|off> - Enable or disable showmail mode", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  PASSWORD <password> - Change your password", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  IDENTIFY <nickname> <password> - Identify yourself to the server", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  INFO [nick] - Show nick information", client)).await?;
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :  HELP - Show available commands", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :NickServ commands:")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  REGISTER <password> - Register your nick")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  DROP <password> - Delete your nick registration")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  EMAIL <email|OFF> - Set or disable your email")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  URL <url|OFF> - Set or disable your URL")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  VHOST <vhost|OFF> - Set or disable your vhost")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  NOACCESS <on|off> - Enable or disable no access mode")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  NOOP <on|off> - Enable or disable no op mode")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  SHOWMAIL <on|off> - Enable or disable showmail mode")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  PASSWORD <password> - Change your password")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  IDENTIFY <nickname> <password> - Identify yourself to the server")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  INFO [nick] - Show nick information")).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :  HELP - Show available commands")).await?;
             }
             _ => {
-                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {} :Unknown command. Use /NS HELP for available commands.", client)).await?;
+                self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Unknown command. Use /NS HELP for available commands.")).await?;
             }
         }
         Ok(())
