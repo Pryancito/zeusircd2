@@ -103,7 +103,7 @@ impl ServerCommunication {
         // Cerrar la conexión AMQP
         let mut conn = self.connection.lock().await;
         if let Some(connection) = conn.take() {
-            connection.close(200, "Cierre normal").await?;
+            connection.close(200, "Server shutdown").await?;
             self.connected = false;
         }
         info!("Disconnected from AMQP.");
