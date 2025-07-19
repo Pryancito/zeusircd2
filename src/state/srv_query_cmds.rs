@@ -462,7 +462,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
-        let user = users.get(&crate::state::structs::to_unicase(&client.to_string()));
+        let user = users.get(&crate::state::structs::to_unicase(&client));
         let if_oper = user.as_ref().unwrap().modes.is_local_oper();
         let mut set_mode_args: Vec<String> = Vec::new();
         let mut unset_mode_args: Vec<String> = Vec::new();
@@ -485,7 +485,7 @@ impl super::MainState {
             if chanobj.modes.only_ircops {
                 self.feed_msg(
                     &mut conn_state.stream,
-                    format!("NOTICE {} :El modo +O está activo: solo IRCops pueden unirse a este canal.", client)
+                    format!("NOTICE {client} :El modo +O está activo: solo IRCops pueden unirse a este canal.")
                 ).await?;
             }
             self.feed_msg(
@@ -640,9 +640,7 @@ impl super::MainState {
                                                         let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                                         for nick in nicks {
                                                             if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                                                                let mensaje = format!("MODE {} -b {}",
-                                                                    channel_name,
-                                                                    ban_mask_for_timeout); // Aquí también usa la String
+                                                                let mensaje = format!("MODE {channel_name} -b {ban_mask_for_timeout}"); // Aquí también usa la String
                                                                 let _ = user.send_msg_display(&config_clone.name, &mensaje);
                                                             }
                                                         }
@@ -769,9 +767,7 @@ impl super::MainState {
                                                         let nicks: Vec<String> = channel.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                                         for nick in nicks {
                                                             if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                                                                let mensaje = format!("MODE {} -B {}",
-                                                                    channel_name,
-                                                                    ban_mask_for_timeout);
+                                                                let mensaje = format!("MODE {channel_name} -B {ban_mask_for_timeout}");
                                                                 let _ = user.send_msg_display(&config_clone.name, &mensaje);
                                                             }
                                                         }

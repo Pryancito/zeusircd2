@@ -26,6 +26,12 @@ pub(crate) struct ServerCommunication {
     pub(super) state: Arc<RwLock<VolatileState>>,
 }
 
+impl Drop for ServerCommunication {
+    fn drop(&mut self) {
+        let _ = self.disconnect_server();
+    }
+}
+
 impl ServerCommunication {
     pub(crate) async fn new(state: &Arc<RwLock<VolatileState>>, amqp_url: &str, server: &String, exchange: &str, queue: &str) -> Self {
         let server_comm = Self {
@@ -86,6 +92,91 @@ impl ServerCommunication {
             )
             .await?;
         info!("Connected to AMQP. Channel: {:?}", channel.id());
+        Ok(())
+    }
+
+    pub(crate) async fn disconnect_server(&mut self) -> Result<(), Box<dyn Error>> {
+        if !self.connected {
+            return Err("Not connected to this server".into());
+        }
+
+        // Cerrar la conexión AMQP
+        let mut conn = self.connection.lock().await;
+        if let Some(connection) = conn.take() {
+            connection.close(200, "Cierre normal").await?;
+            self.connected = false;
+        }
+        info!("Disconnected from AMQP.");
+        Ok(())
+    }
+
+    pub async fn monitor_amqp_connections(
+        amqp_url: &str,
+    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let conn = Connection::connect(amqp_url, ConnectionProperties::default()).await?;
+        let channel = conn.create_channel().await?;
+    
+        // 1. Declarar una cola para los eventos
+        let queue_name = "server_connection_events";
+        let _queue = channel.queue_declare(
+            queue_name,
+            QueueDeclareOptions {
+                durable: false,      // No persistir la cola
+                exclusive: true,     // Solo este consumidor puede acceder
+                auto_delete: true,   // Eliminar cuando el consumidor se desconecte
+                ..Default::default()
+            },
+            FieldTable::default(),
+        ).await?;
+    
+        // 2. Vincular la cola al exchange de eventos de RabbitMQ
+        // Para capturar todos los eventos de conexión/desconexión
+        channel.queue_bind(
+            queue_name,
+            "amq.rabbitmq.event", // O "amq.rabbitmq.log"
+            "connection.#",       // Binding key para eventos de conexión
+            QueueBindOptions::default(),
+            FieldTable::default(),
+        ).await?;
+    
+        info!("Escuchando eventos de conexión/desconexión AMQP en la cola '{}'", queue_name);
+    
+        // 3. Iniciar el consumidor
+        let mut consumer = channel.basic_consume(
+            queue_name,
+            "connection_monitor_consumer",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        ).await?;
+    
+        while let Some(delivery) = consumer.next().await {
+            let delivery = delivery?;
+            let routing_key = delivery.routing_key.as_str();
+            let payload_str = String::from_utf8_lossy(&delivery.data);
+    
+            info!("Evento AMQP recibido: Routing Key='{}'", routing_key);
+    
+            // Intenta parsear el payload como JSON (si usas amq.rabbitmq.event)
+            match serde_json::from_str::<serde_json::Value>(&payload_str) {
+                Ok(json_event) => {
+                    info!("  Payload JSON: {:?}", json_event);
+                    // Aquí puedes extraer información como connection_name, peer_address, etc.
+                    if routing_key == "connection.created" {
+                        info!("    --> ¡Nueva conexión detectada! Cliente: {:?}", json_event["connection_name"]);
+                    } else if routing_key == "connection.closed" {
+                        info!("    --> ¡Conexión cerrada detectada! Cliente: {:?}", json_event["connection_name"]);
+                        info!("    Razón: {:?}", json_event["reason"]);
+                    }
+                    // ... y actualizar tu estado interno de la red IRC
+                }
+                Err(_) => {
+                    // Si no es JSON o si usas amq.rabbitmq.log
+                    info!("  Payload (texto): {}", payload_str);
+                }
+            }
+            delivery.ack(Default::default()).await?;
+        }
+    
         Ok(())
     }
 
@@ -150,6 +241,12 @@ impl ServerCommunication {
                     }
                 }
             }
+        });
+        let amqp_url = self.amqp_url.clone();
+        tokio::spawn(async move {
+            ServerCommunication::monitor_amqp_connections(&amqp_url).await.unwrap();
+            info!("Monitor de conexiones AMQP finalizado");
+            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
         });
         Ok(())
     }
