@@ -359,17 +359,21 @@ impl super::MainState {
             )
             .await?;
         } else {
-            self.feed_msg(
-                &mut conn_state.stream,
-                RplLinks364 {
-                    client,
-                    server: &self.config.name,
-                    mask: &self.config.name,
-                    hop_count: 0,
-                    server_info: &self.config.info,
-                },
-            )
-            .await?;
+            let servers = self.serv_comm.read().await.servers.read().await.clone();
+            let servers_vec = servers.values().collect::<Vec<_>>();
+            for server_info in servers_vec {
+                self.feed_msg(
+                    &mut conn_state.stream,
+                    RplLinks364 {
+                        client,
+                        server: &server_info.name,
+                        mask: &server_info.version,
+                        hop_count: 0,
+                        server_info: &server_info.uuid.to_string(),
+                    },
+                )
+                .await?;
+            }
             self.feed_msg(
                 &mut conn_state.stream,
                 RplEndOfLinks365 { client, mask: "*" },
@@ -778,8 +782,8 @@ impl super::MainState {
                                         #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
-                                            let mensaje = format!(":{} {} MODE {} +B {}",
-                                                self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                            let mensaje = format!(":{} MODE {} +B {}",
+                                                conn_state.user_state.source, target, norm_bmask);
                                             let _ = serv_comm.publish_message(&mensaje).await;
                                         }
                                     } else {
@@ -792,8 +796,8 @@ impl super::MainState {
                                         #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
-                                            let mensaje = format!(":{} {} MODE {} -B {}",
-                                                self.config.name, conn_state.user_state.source, target, norm_bmask);
+                                            let mensaje = format!(":{} MODE {} -B {}",
+                                                conn_state.user_state.source, target, norm_bmask);
                                             let _ = serv_comm.publish_message(&mensaje).await;
                                         }
                                     }

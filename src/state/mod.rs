@@ -83,7 +83,7 @@ pub(crate) struct MainState {
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     databases: Databases,
     #[cfg(feature = "amqp")]
-    serv_comm: RwLock<ServerCommunication>,
+    serv_comm: Arc<RwLock<ServerCommunication>>,
     created: String,
     created_time: DateTime<Local>,
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
@@ -146,15 +146,13 @@ impl MainState {
             }
         };
         #[cfg(feature = "amqp")]
-        let serv_comm = {
-            RwLock::new(ServerCommunication::new(
+        let serv_comm = Arc::new(RwLock::new(ServerCommunication::new(
                 &state,
                 &config.amqp.url,
                 &config.name,
                 &config.amqp.exchange,
                 &config.amqp.queue,
-            ).await)
-        };
+            ).await));
         let now = Local::now();
         let conns_count = Arc::new(AtomicUsize::new(0));
         let connections_per_ip = Arc::new(RwLock::new(HashMap::new()));
@@ -523,8 +521,6 @@ impl MainState {
                         self.process_ison(conn_state, nicknames).await,
                     DIE{ message } =>
                         self.process_die(conn_state, message).await,
-                    SERVERS{ target } => 
-                        self.process_servers(conn_state, target.as_deref()).await,
                     #[cfg(any(feature = "sqlite", feature = "mysql"))]
                     NICKSERV{ subcommand, params } =>
                         self.process_nickserv(conn_state, subcommand, params).await,
@@ -564,29 +560,6 @@ impl MainState {
         t: T,
     ) -> Result<(), LinesCodecError> {
         stream.feed(format!(":{} {}", source, t)).await
-    }
-
-    async fn process_servers<'a>(
-        &self,
-        conn_state: &mut ConnState,
-        _target: Option<&'a str>,
-    ) -> Result<(), Box<dyn StdError + Send + Sync>> {
-        // Verificar si el usuario tiene privilegios de operador
-        let state = self.state.read().await;
-        let user = state.users.get(&crate::state::structs::to_unicase(conn_state.user_state.nick.as_ref().unwrap())).unwrap();
-        if !user.modes.is_local_oper() {
-            self.feed_msg(&mut conn_state.stream, 
-                ErrNoPrivileges481{ client: conn_state.user_state.client_name() }).await?;
-            return Ok(());
-        }
-
-        // Enviar el final de la lista
-        self.feed_msg(&mut conn_state.stream, 
-            format!(":{} 365 {} :End of /SERVERS list", 
-                self.config.name,
-                conn_state.user_state.nick.as_ref().unwrap())).await?;
-
-        Ok(())
     }
 }
 

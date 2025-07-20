@@ -193,8 +193,8 @@ impl super::MainState {
                             #[cfg(feature = "amqp")]
                             if !chan_str.starts_with('&') {
                                 let serv_comm = self.serv_comm.read().await;
-                                let mensaje = format!(":{} {} {}",
-                                    self.config.name, conn_state.user_state.source, msg_str);
+                                let mensaje = format!(":{} {}",
+                                    conn_state.user_state.source, msg_str);
                                 let _ = serv_comm.publish_message(&mensaje).await;
                             }
                         }
@@ -225,8 +225,8 @@ impl super::MainState {
                         #[cfg(feature = "amqp")]
                         if !chan_str.starts_with('&') {
                             let serv_comm = self.serv_comm.read().await;
-                            let mensaje = format!(":{} {} {}",
-                                self.config.name, conn_state.user_state.source, msg_str);
+                            let mensaje = format!(":{} {}",
+                                conn_state.user_state.source, msg_str);
                             let _ = serv_comm.publish_message(&mensaje).await;
                         }
                         // El campo server_comm no existe en VolatileState, así que eliminamos esta línea

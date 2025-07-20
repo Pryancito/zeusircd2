@@ -424,7 +424,6 @@ pub(crate) enum Command<'a> {
     DIE {
         message: Option<&'a str>,
     },
-    SERVERS { target: Option<String> },
     #[cfg(any(feature = "sqlite", feature = "mysql"))]
     NICKSERV {
         subcommand: &'a str,
@@ -495,17 +494,16 @@ impl<'a> Command<'a> {
             WALLOPS { .. } => 36,
             ISON { .. } => 37,
             DIE { .. } => 38,
-            SERVERS { .. } => 39,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            NICKSERV { .. } => 40,
+            NICKSERV { .. } => 39,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            NS { .. } => 41,
+            NS { .. } => 40,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            CHANSERV { .. } => 42,
+            CHANSERV { .. } => 41,
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
-            CS { .. } => 43,
-            SETNAME { .. } => 44,
-            MONITOR { .. } => 45,
+            CS { .. } => 42,
+            SETNAME { .. } => 43,
+            MONITOR { .. } => 44,
         }
     }
 
@@ -927,13 +925,6 @@ impl<'a> Command<'a> {
                 } else {
                     Ok(DIE { message: None })
                 }
-            }
-            "SERVERS" => {
-                if message.params.is_empty() {
-                    return Err(NeedMoreParams(NAMESId));
-                }
-                let target = message.params.get(0).map(|s| s.to_string());
-                Ok(Command::SERVERS { target })
             }
             #[cfg(any(feature = "sqlite", feature = "mysql"))]
             "NICKSERV" => {

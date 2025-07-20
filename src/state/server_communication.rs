@@ -16,6 +16,14 @@ use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::time::Duration;
 use uuid::Uuid;
 use serde_json;
+use std::collections::HashMap;
+
+#[derive(Clone)]
+pub(crate) struct ServerInfo {
+    pub(crate) name: String,
+    pub(crate) version: String,
+    pub(crate) uuid: Uuid,
+}
 
 #[derive(Clone)]
 pub(crate) struct ServerCommunication {
@@ -30,6 +38,7 @@ pub(crate) struct ServerCommunication {
     conn_channel: Arc<Mutex<Option<lapin::Channel>>>,
     conn_queue: String,
     pub(super) state: Arc<RwLock<VolatileState>>,
+    pub(super) servers: Arc<RwLock<HashMap<String, ServerInfo>>>,
 }
 
 impl Drop for ServerCommunication {
@@ -40,18 +49,33 @@ impl Drop for ServerCommunication {
 
 impl ServerCommunication {
     pub(crate) async fn new(state: &Arc<RwLock<VolatileState>>, amqp_url: &str, server: &String, exchange: &str, queue: &str) -> Self {
+        // Generar el UUID primero para poder usarlo en el mapa y en la estructura
+        let generated_uuid = Uuid::new_v4();
         let server_comm = Self {
             amqp_url: amqp_url.to_string(),
             exchange: exchange.to_string(),
             queue: queue.to_string(),
             server_name: server.to_string(),
-            uuid: uuid::Uuid::new_v4(),
+            uuid: generated_uuid,
             connected: false,
             connection: Arc::new(Mutex::new(None)),
             channel: Arc::new(Mutex::new(None)),
             conn_channel: Arc::new(Mutex::new(None)),
             conn_queue: format!("connection_events_{}", queue),
             state: state.clone(),
+            // Insertar el propio servidor en el mapa de servidores
+            servers: Arc::new(RwLock::new({
+                let mut map = HashMap::new();
+                map.insert(
+                    generated_uuid.to_string(),
+                    ServerInfo {
+                        name: server.to_string(),
+                        version: env!("CARGO_PKG_VERSION").to_string(),
+                        uuid: generated_uuid,
+                    },
+                );
+                map
+            })),
         };
         server_comm
     }
@@ -96,7 +120,7 @@ impl ServerCommunication {
             .queue_bind(
                 &self.queue,
                 &self.exchange,
-                "",  // routing key vacía para fanout
+                &self.uuid.to_string(),  // routing key vacía para fanout
                 QueueBindOptions::default(),
                 FieldTable::default(),
             )
@@ -150,12 +174,13 @@ impl ServerCommunication {
 
     pub(crate) async fn publish_message(&self, message: &String) -> Result<(), Box<dyn Error>> {
         // Serializar el mensaje a JSON
+        let message = format!(":{} {}", self.uuid.to_string(), message);
         let message_bytes = serde_json::to_vec(&message)?;
         // Publicar el mensaje en el exchange
         self.channel.lock().await.as_ref().unwrap()
             .basic_publish(
                 &self.exchange,
-                &self.server_name,
+                &self.uuid.to_string(),
                 BasicPublishOptions::default(),
                 &message_bytes,
                 BasicProperties::default(),
@@ -175,7 +200,7 @@ impl ServerCommunication {
         
         let mut consumer = channel.basic_consume(
             &self.queue,
-            "",
+            &self.uuid.to_string(),
             BasicConsumeOptions {
                 no_ack: false,
                 ..Default::default()
@@ -212,7 +237,7 @@ impl ServerCommunication {
         });
 
         // Iniciar el monitor de conexiones en un hilo separado
-        let server_comm_monitor = self.clone();
+        let mut server_comm_monitor = self.clone();
         tokio::spawn(async move {
             let _ = server_comm_monitor.monitor_amqp_connections().await;
             info!("Monitor de conexiones AMQP finalizado");
@@ -221,12 +246,12 @@ impl ServerCommunication {
         Ok(())
     }
 
-    pub(crate) async fn monitor_amqp_connections(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    pub(crate) async fn monitor_amqp_connections(&mut self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         let conn_channel = self.conn_channel.lock().await;
         let channel = conn_channel.as_ref().ok_or("No hay canal AMQP disponible")?;
         let mut consumer = channel.basic_consume(
             &self.conn_queue,
-            "",
+            &self.uuid.to_string(),
             BasicConsumeOptions::default(),
             FieldTable::default(),
         ).await?;
@@ -294,12 +319,33 @@ impl ServerCommunication {
                         if routing_key == "connection.created" {
                             if !server_name.is_empty() && !server_version.is_empty() && !server_uuid.is_empty() {
                                 info!("--> ¡Nueva conexión detectada! Servidor IRC: '{}' (v{}) UUID: {}", server_name, server_version, server_uuid);
+                                // Solo agregar si el servidor no existe
+                                if !self.servers.read().await.contains_key(&server_uuid) {
+                                    if let Ok(uuid) = Uuid::parse_str(&server_uuid) {
+                                        self.servers.write().await.insert(
+                                            server_uuid.clone(),
+                                            ServerInfo {
+                                                name: server_name.clone(),
+                                                version: server_version.clone(),
+                                                uuid,
+                                            },
+                                        );
+                                        let mensaje = format!("{} SERVER {}",
+                                            self.server_name, env!("CARGO_PKG_VERSION"));
+                                        let _ = self.publish_message(&mensaje).await;
+                                    } else {
+                                        error!("No se pudo parsear el UUID del servidor: {}", server_uuid);
+                                    }
+                                }
                             } else {
                                 info!("--> ¡Nueva conexión detectada! (datos incompletos)");
                             }
                         } else if routing_key == "connection.closed" {
                             if !server_name.is_empty() && !server_uuid.is_empty() {
                                 info!("--> ¡Conexión cerrada detectada! Servidor IRC: '{}' UUID: {}", server_name, server_uuid);
+                                if self.servers.read().await.contains_key(&server_uuid) {
+                                    self.servers.write().await.remove(&server_uuid);
+                                }
                             } else {
                                 info!("--> ¡Conexión cerrada detectada! (datos incompletos)");
                             }
@@ -321,9 +367,7 @@ impl ServerCommunication {
     pub(crate) async fn server_message(&self, message: String) -> Result<(), Box<dyn Error + Send + Sync>> {
         // Manejo de errores más robusto
         let result = match self.parse_server_message(message.clone()) {
-            Ok(r) => {
-                r
-            },
+            Ok(r) => r,
             Err(e) => {
                 error!("Error al parsear mensaje del servidor: {}", e);
                 return Err(e);
@@ -346,7 +390,7 @@ impl ServerCommunication {
                     for nick in nicks {
                         if *nick != snick {
                             if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&nick)) {
-                                if user.server != result.get_server() {
+                                if user.server == self.server_name {
                                     let _ = user.send_msg_display(
                                         result.get_user(),
                                         server_message.as_str()
@@ -400,7 +444,7 @@ impl ServerCommunication {
                     let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
-                            if user.server != result.get_server() {
+                            if user.server == self.server_name {
                                 let _ = user.send_msg_display(
                                     result.get_user(),
                                     server_message.as_str()
@@ -411,9 +455,13 @@ impl ServerCommunication {
                         }
                     }
                     if let Some(duration) = duration {
+                        // Capturar solo los datos necesarios para el spawn, evitando capturar self
                         let channel_name = channel.to_string();
                         let ban_mask_for_timeout = norm_bmask.clone();
                         let state_clone = self.state.clone();
+                        let server_name = self.server_name.clone();
+                        let user_str = result.get_user().to_string();
+                        let server_message_clone = server_message.clone();
 
                         tokio::spawn(async move {
                             tokio::time::sleep(Duration::from_secs(duration)).await;
@@ -429,10 +477,11 @@ impl ServerCommunication {
                                     let nicks: Vec<String> = channel.users.keys().map(|k| k.to_string()).collect();
                                     for nick in nicks {
                                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                                            if user.server != result.get_server() {
+                                            // Solo notificar a usuarios conectados a este servidor
+                                            if user.server == server_name {
                                                 let _ = user.send_msg_display(
-                                                    result.get_user(),
-                                                    server_message.as_str()
+                                                    &user_str,
+                                                    server_message_clone.as_str()
                                                 );
                                             }
                                         }
@@ -451,7 +500,7 @@ impl ServerCommunication {
                     let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                            if user.server != result.get_server() {
+                            if user.server == self.server_name {
                                 let _ = user.send_msg_display(
                                     result.get_user(),
                                     server_message.as_str()
@@ -463,6 +512,23 @@ impl ServerCommunication {
                     }
                 }
             }
+            "SERVER" => {
+                let info = self.parse_server_message(message.clone()).unwrap();
+                let server_uuid = info.get_uuid().to_string();
+                let server_name = info.get_user().to_string();
+                let server_version = info.get_text().to_string();
+                
+                if !self.servers.read().await.contains_key(&server_uuid) {
+                    self.servers.write().await.insert(
+                        server_uuid.to_string(),
+                        ServerInfo {
+                            name: server_name.to_string(),
+                            version: server_version.to_string(),
+                            uuid: Uuid::parse_str(&server_uuid).unwrap(),
+                        },
+                    );
+                }
+            }
             _ => {
                 error!("Server Message error: Comando desconocido {}", result.get_command());
             }
@@ -472,37 +538,42 @@ impl ServerCommunication {
 
     pub(crate) fn parse_server_message(&self, message: String) -> Result<ServMessage, Box<dyn Error + Send + Sync>> {
         let message = message.trim();
-        
+
         // Verificar que el mensaje comienza con ':'
         if !message.starts_with(':') {
             return Err("Mensaje inválido: debe comenzar con ':'".into());
         }
 
-        // Extraer el servidor
-        let server_end = message.find(' ').ok_or("Formato de mensaje inválido")?;
-        let server = message[1..server_end].to_string();
-        
-        // Extraer el resto del mensaje
-        let remaining = message[server_end + 1..].trim();
-        
-        // Extraer nick!id@host
-        let user_end = remaining.find(' ').ok_or("Formato de mensaje inválido")?;
-        let user = remaining[..user_end].to_string();
-        
-        // Extraer el comando y el texto
-        let command_text = remaining[user_end + 1..].trim();
-        let command_end = command_text.find(':').unwrap_or(command_text.len());
-        let command = command_text[..command_end].trim().to_string();
-        
+        // El formato esperado es :server-uuid user command message
+        // Primero, extraer el server-uuid
+        let mut rest = &message[1..];
+        let uuid_end = rest.find(' ').ok_or("Formato de mensaje inválido: falta UUID")?;
+        let uuid = rest[..uuid_end].to_string();
+        rest = rest[uuid_end+1..].trim();
+
+        // Extraer el usuario (nick!ident@host)
+        let user_end = rest.find(' ').ok_or("Formato de mensaje inválido: falta usuario")?;
+        let user = rest[..user_end].to_string();
+        rest = rest[user_end+1..].trim();
+
+        // Extraer el comando
+        let command_end = rest.find(' ').unwrap_or(rest.len());
+        let command = rest[..command_end].trim().to_string();
+
         // Extraer el texto (si existe)
-        let text = if command_end < command_text.len() {
-            command_text[command_end + 1..].trim().to_string()
+        let text = if command_end < rest.len() {
+            let after_command = rest[command_end..].trim();
+            if after_command.starts_with(':') {
+                after_command[1..].trim().to_string()
+            } else {
+                after_command.to_string()
+            }
         } else {
             String::new()
         };
 
         Ok(ServMessage {
-            server,
+            uuid,
             user,
             command,
             text
@@ -549,7 +620,7 @@ impl ServerCommunication {
 
 #[derive(Clone)]
 pub struct ServMessage {
-    server: String,
+    uuid: String,
     user: String,
     command: String,
     text: String,
@@ -572,11 +643,11 @@ impl ServMessage {
         &self.text
     }
 
-    pub fn get_server(&self) -> &str {
-        &self.server
-    }
-
     pub fn get_user(&self) -> &str {
         &self.user
+    }
+
+    pub fn get_uuid(&self) -> &str {
+        &self.uuid
     }
 }
