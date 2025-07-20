@@ -4,15 +4,18 @@ use lapin::{
     Connection, ConnectionProperties,
     BasicProperties,
 };
+use lapin::types::AMQPValue;
 use std::error::Error;
 use std::result::Result;
 use std::sync::Arc;
 use tokio::sync::Mutex;
 use crate::state::*;
 use futures::stream::StreamExt;
-use tracing::error;
+use tracing::{error, info};
 use std::time::{UNIX_EPOCH, SystemTime};
 use tokio::time::Duration;
+use uuid::Uuid;
+use serde_json;
 
 #[derive(Clone)]
 pub(crate) struct ServerCommunication {
@@ -20,9 +23,12 @@ pub(crate) struct ServerCommunication {
     exchange: String,
     queue: String,
     server_name: String,
+    uuid: Uuid,
     connected: bool,
     connection: Arc<Mutex<Option<Connection>>>,
     channel: Arc<Mutex<Option<lapin::Channel>>>,
+    conn_channel: Arc<Mutex<Option<lapin::Channel>>>,
+    conn_queue: String,
     pub(super) state: Arc<RwLock<VolatileState>>,
 }
 
@@ -39,9 +45,12 @@ impl ServerCommunication {
             exchange: exchange.to_string(),
             queue: queue.to_string(),
             server_name: server.to_string(),
+            uuid: uuid::Uuid::new_v4(),
             connected: false,
             connection: Arc::new(Mutex::new(None)),
             channel: Arc::new(Mutex::new(None)),
+            conn_channel: Arc::new(Mutex::new(None)),
+            conn_queue: format!("connection_events_{}", queue),
             state: state.clone(),
         };
         server_comm
@@ -51,19 +60,20 @@ impl ServerCommunication {
         if self.connected {
             return Err("Already connected to this server".into());
         }
-        let connection = Connection::connect(&self.amqp_url, ConnectionProperties::default()).await?;
-        let channel = connection.create_channel().await?;
 
-        let mut conn = self.connection.lock().await;
-        *conn = Some(connection);
-        
-        let mut chan = self.channel.lock().await;
-        *chan = Some(channel.clone());
-        
+        let mut connection_properties = ConnectionProperties::default();
+        connection_properties.client_properties.insert("irc_server_name".into(), AMQPValue::LongString(self.server_name.clone().into()));
+        connection_properties.client_properties.insert("irc_server_version".into(), AMQPValue::LongString(env!("CARGO_PKG_VERSION").into()));
+        connection_properties.client_properties.insert("irc_server_uuid".into(), AMQPValue::LongString(self.uuid.to_string().into()));
+
+        let connection = Connection::connect(&self.amqp_url, connection_properties).await?;
+        self.connection = Arc::new(Mutex::new(Some(connection)));
+        let channel = self.connection.lock().await.as_ref().unwrap().create_channel().await?;
+        self.channel = Arc::new(Mutex::new(Some(channel)));
         self.connected = true;
 
         // Declarar el exchange
-        channel
+        self.channel.lock().await.as_ref().unwrap()
             .exchange_declare(
                 &self.exchange,
                 lapin::ExchangeKind::Fanout,
@@ -73,7 +83,7 @@ impl ServerCommunication {
             .await?;
 
         // Declarar la cola
-        channel
+        self.channel.lock().await.as_ref().unwrap()
             .queue_declare(
                 &self.queue,
                 QueueDeclareOptions::default(),
@@ -82,7 +92,7 @@ impl ServerCommunication {
             .await?;
 
         // Vincular la cola al exchange
-        channel
+        self.channel.lock().await.as_ref().unwrap()
             .queue_bind(
                 &self.queue,
                 &self.exchange,
@@ -91,7 +101,35 @@ impl ServerCommunication {
                 FieldTable::default(),
             )
             .await?;
-        info!("Connected to AMQP. Channel: {:?}", channel.id());
+        info!("Connected to AMQP. Channel: {:?}", self.channel.lock().await.as_ref().unwrap().id());
+
+        let conn_channel = self.connection.lock().await.as_ref().unwrap().create_channel().await?;
+        self.conn_channel = Arc::new(Mutex::new(Some(conn_channel)));
+
+        self.conn_channel.lock().await.as_ref().unwrap()
+            .queue_declare(
+            &self.conn_queue,
+            QueueDeclareOptions {
+                durable: false,      // No persistir la cola
+                exclusive: true,     // Solo este consumidor puede acceder
+                auto_delete: true,   // Eliminar cuando el consumidor se desconecte
+                ..Default::default()
+            },
+            FieldTable::default(),
+        ).await?;
+    
+        // 2. Vincular la cola al exchange de eventos de RabbitMQ
+        // Para capturar todos los eventos de conexión/desconexión
+        self.channel.lock().await.as_ref().unwrap()
+            .queue_bind(
+            &self.conn_queue,
+            "amq.rabbitmq.event", // O "amq.rabbitmq.log"
+            "connection.#",       // Binding key para eventos de conexión
+            QueueBindOptions::default(),
+            FieldTable::default(),
+        ).await?;
+
+        info!("Connected to AMQP Connection listener. Channel: {:?}", self.channel.lock().await.as_ref().unwrap().id());
         Ok(())
     }
 
@@ -107,76 +145,6 @@ impl ServerCommunication {
             self.connected = false;
         }
         info!("Disconnected from AMQP.");
-        Ok(())
-    }
-
-    pub async fn monitor_amqp_connections(
-        amqp_url: &str,
-    ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-        let conn = Connection::connect(amqp_url, ConnectionProperties::default()).await?;
-        let channel = conn.create_channel().await?;
-    
-        // 1. Declarar una cola para los eventos
-        let queue_name = "server_connection_events";
-        let _queue = channel.queue_declare(
-            queue_name,
-            QueueDeclareOptions {
-                durable: false,      // No persistir la cola
-                exclusive: true,     // Solo este consumidor puede acceder
-                auto_delete: true,   // Eliminar cuando el consumidor se desconecte
-                ..Default::default()
-            },
-            FieldTable::default(),
-        ).await?;
-    
-        // 2. Vincular la cola al exchange de eventos de RabbitMQ
-        // Para capturar todos los eventos de conexión/desconexión
-        channel.queue_bind(
-            queue_name,
-            "amq.rabbitmq.event", // O "amq.rabbitmq.log"
-            "connection.#",       // Binding key para eventos de conexión
-            QueueBindOptions::default(),
-            FieldTable::default(),
-        ).await?;
-    
-        info!("Escuchando eventos de conexión/desconexión AMQP en la cola '{}'", queue_name);
-    
-        // 3. Iniciar el consumidor
-        let mut consumer = channel.basic_consume(
-            queue_name,
-            "connection_monitor_consumer",
-            BasicConsumeOptions::default(),
-            FieldTable::default(),
-        ).await?;
-    
-        while let Some(delivery) = consumer.next().await {
-            let delivery = delivery?;
-            let routing_key = delivery.routing_key.as_str();
-            let payload_str = String::from_utf8_lossy(&delivery.data);
-    
-            info!("Evento AMQP recibido: Routing Key='{}'", routing_key);
-    
-            // Intenta parsear el payload como JSON (si usas amq.rabbitmq.event)
-            match serde_json::from_str::<serde_json::Value>(&payload_str) {
-                Ok(json_event) => {
-                    info!("  Payload JSON: {:?}", json_event);
-                    // Aquí puedes extraer información como connection_name, peer_address, etc.
-                    if routing_key == "connection.created" {
-                        info!("    --> ¡Nueva conexión detectada! Cliente: {:?}", json_event["connection_name"]);
-                    } else if routing_key == "connection.closed" {
-                        info!("    --> ¡Conexión cerrada detectada! Cliente: {:?}", json_event["connection_name"]);
-                        info!("    Razón: {:?}", json_event["reason"]);
-                    }
-                    // ... y actualizar tu estado interno de la red IRC
-                }
-                Err(_) => {
-                    // Si no es JSON o si usas amq.rabbitmq.log
-                    info!("  Payload (texto): {}", payload_str);
-                }
-            }
-            delivery.ack(Default::default()).await?;
-        }
-    
         Ok(())
     }
 
@@ -199,7 +167,7 @@ impl ServerCommunication {
 
     pub(crate) async fn consume_messages<F, Fut>(&self, callback: F) -> Result<(), Box<dyn Error + Send + Sync>>
     where
-        F: Fn(String) -> Fut + Send + Sync + 'static,
+        F: Fn(String) -> Fut + Send + Sync + Clone + 'static,
         Fut: std::future::Future<Output = Result<(), Box<dyn Error + Send + Sync>>> + Send + 'static,
     {
         let channel_guard = self.channel.lock().await;
@@ -215,15 +183,15 @@ impl ServerCommunication {
             FieldTable::default(),
         ).await?;
 
-
         let server_comm = self.clone();
+        let callback_clone = callback.clone();
         tokio::spawn(async move {
-            while let Some(delivery) = consumer.next().await {
-                match delivery {
+            while let Some(delivery_result) = consumer.next().await {
+                match delivery_result {
                     Ok(delivery) => {
                         if let Ok(message) = serde_json::from_slice::<String>(&delivery.data) {
                             let msg = message.clone();
-                            match callback(message.clone()).await {
+                            match callback_clone(message.clone()).await {
                                 Ok(_) => {
                                     let _ = server_comm.server_message(msg).await;
                                 },
@@ -242,12 +210,111 @@ impl ServerCommunication {
                 }
             }
         });
-        let amqp_url = self.amqp_url.clone();
+
+        // Iniciar el monitor de conexiones en un hilo separado
+        let server_comm_monitor = self.clone();
         tokio::spawn(async move {
-            ServerCommunication::monitor_amqp_connections(&amqp_url).await.unwrap();
+            let _ = server_comm_monitor.monitor_amqp_connections().await;
             info!("Monitor de conexiones AMQP finalizado");
-            Ok::<(), Box<dyn std::error::Error + Send + Sync>>(())
         });
+
+        Ok(())
+    }
+
+    pub(crate) async fn monitor_amqp_connections(&self) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+        let conn_channel = self.conn_channel.lock().await;
+        let channel = conn_channel.as_ref().ok_or("No hay canal AMQP disponible")?;
+        let mut consumer = channel.basic_consume(
+            &self.conn_queue,
+            "",
+            BasicConsumeOptions::default(),
+            FieldTable::default(),
+        ).await?;
+    
+        while let Some(delivery) = consumer.next().await {
+            let delivery = delivery?;
+            let routing_key = delivery.routing_key.as_str();
+    
+            // Intenta parsear el payload como JSON (si usas amq.rabbitmq.event)
+            if let Some(headers) = delivery.properties.headers() {
+                if let Some(client_props_value) = headers.inner().get("client_properties") {
+                    if let AMQPValue::FieldArray(client_props_array) = client_props_value {
+                        // Extraer datos del servidor
+                        let mut server_name = String::new();
+                        let mut server_version = String::new();
+                        let mut server_uuid = String::new();
+                        
+                        // Iterar sobre los elementos del FieldArray
+                        for (_index, value) in client_props_array.as_slice().iter().enumerate() {
+                            if let AMQPValue::LongString(data_str) = value {
+                                let data = data_str.to_string();
+                                
+                                // Buscar el nombre del servidor
+                                if data.contains("irc_server_name") {
+                                    // Extraer el valor del elemento actual (segundo <<\" en el string)
+                                    if let Some(first_start) = data.find("<<\"") {
+                                        if let Some(second_start) = data[first_start + 3..].find("<<\"") {
+                                            let actual_start = first_start + 3 + second_start + 3;
+                                            if let Some(end) = data[actual_start..].find("\">>") {
+                                                server_name = data[actual_start..actual_start + end].to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Buscar la versión del servidor
+                                if data.contains("irc_server_version") {
+                                    // Extraer el valor del elemento actual (segundo <<\" en el string)
+                                    if let Some(first_start) = data.find("<<\"") {
+                                        if let Some(second_start) = data[first_start + 3..].find("<<\"") {
+                                            let actual_start = first_start + 3 + second_start + 3;
+                                            if let Some(end) = data[actual_start..].find("\">>") {
+                                                server_version = data[actual_start..actual_start + end].to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                                
+                                // Buscar el UUID del servidor
+                                if data.contains("irc_server_uuid") {
+                                    // Extraer el valor del elemento actual (segundo <<\" en el string)
+                                    if let Some(first_start) = data.find("<<\"") {
+                                        if let Some(second_start) = data[first_start + 3..].find("<<\"") {
+                                            let actual_start = first_start + 3 + second_start + 3;
+                                            if let Some(end) = data[actual_start..].find("\">>") {
+                                                server_uuid = data[actual_start..actual_start + end].to_string();
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // Mostrar información según el tipo de evento
+                        if routing_key == "connection.created" {
+                            if !server_name.is_empty() && !server_version.is_empty() && !server_uuid.is_empty() {
+                                info!("--> ¡Nueva conexión detectada! Servidor IRC: '{}' (v{}) UUID: {}", server_name, server_version, server_uuid);
+                            } else {
+                                info!("--> ¡Nueva conexión detectada! (datos incompletos)");
+                            }
+                        } else if routing_key == "connection.closed" {
+                            if !server_name.is_empty() && !server_uuid.is_empty() {
+                                info!("--> ¡Conexión cerrada detectada! Servidor IRC: '{}' UUID: {}", server_name, server_uuid);
+                            } else {
+                                info!("--> ¡Conexión cerrada detectada! (datos incompletos)");
+                            }
+                        }
+                    } else {
+                        info!("    --> client_properties no es un FieldArray: {:?}", client_props_value);
+                    }
+                } else {
+                    info!("    --> No se encontró 'client_properties' en headers");
+                }
+            } else {
+                info!("    --> No hay headers en el mensaje");
+            }
+            delivery.ack(Default::default()).await?;
+        }
         Ok(())
     }
 
