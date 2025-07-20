@@ -359,9 +359,11 @@ impl super::MainState {
             )
             .await?;
         } else {
-            let servers = self.serv_comm.read().await.servers.read().await.clone();
-            let servers_vec = servers.values().collect::<Vec<_>>();
-            for server_info in servers_vec {
+            #[cfg(feature = "amqp")]
+            {
+                let servers = self.serv_comm.read().await.servers.read().await.clone();
+                let servers_vec = servers.values().collect::<Vec<_>>();
+                for server_info in servers_vec {
                 self.feed_msg(
                     &mut conn_state.stream,
                     RplLinks364 {
@@ -373,6 +375,7 @@ impl super::MainState {
                     },
                 )
                 .await?;
+                }
             }
             self.feed_msg(
                 &mut conn_state.stream,

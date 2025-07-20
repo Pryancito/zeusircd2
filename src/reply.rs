@@ -283,6 +283,7 @@ pub(crate) enum Reply<'a> {
         client: &'a str,
         channel: &'a str,
     },
+    #[allow(dead_code)]
     RplLinks364 {
         client: &'a str,
         mask: &'a str,
