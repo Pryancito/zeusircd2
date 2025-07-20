@@ -785,7 +785,7 @@ impl super::MainState {
                                         #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
-                                            let mensaje = format!(":{} MODE {} +B {}",
+                                            let mensaje = format!("{} MODE {} +B {}",
                                                 conn_state.user_state.source, target, norm_bmask);
                                             let _ = serv_comm.publish_message(&mensaje).await;
                                         }
@@ -799,7 +799,7 @@ impl super::MainState {
                                         #[cfg(feature = "amqp")]
                                         if !target.starts_with('&') {
                                             let serv_comm = self.serv_comm.read().await;
-                                            let mensaje = format!(":{} MODE {} -B {}",
+                                            let mensaje = format!("{} MODE {} -B {}",
                                                 conn_state.user_state.source, target, norm_bmask);
                                             let _ = serv_comm.publish_message(&mensaje).await;
                                         }

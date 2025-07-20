@@ -193,7 +193,7 @@ impl super::MainState {
                             #[cfg(feature = "amqp")]
                             if !chan_str.starts_with('&') {
                                 let serv_comm = self.serv_comm.read().await;
-                                let mensaje = format!(":{} {}",
+                                let mensaje = format!("{} {}",
                                     conn_state.user_state.source, msg_str);
                                 let _ = serv_comm.publish_message(&mensaje).await;
                             }
@@ -225,7 +225,7 @@ impl super::MainState {
                         #[cfg(feature = "amqp")]
                         if !chan_str.starts_with('&') {
                             let serv_comm = self.serv_comm.read().await;
-                            let mensaje = format!(":{} {}",
+                            let mensaje = format!("{} {}",
                                 conn_state.user_state.source, msg_str);
                             let _ = serv_comm.publish_message(&mensaje).await;
                         }

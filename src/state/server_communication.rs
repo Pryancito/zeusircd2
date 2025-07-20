@@ -120,7 +120,7 @@ impl ServerCommunication {
             .queue_bind(
                 &self.queue,
                 &self.exchange,
-                &self.uuid.to_string(),  // routing key vacía para fanout
+                "",  // routing key vacía para fanout
                 QueueBindOptions::default(),
                 FieldTable::default(),
             )
@@ -180,7 +180,7 @@ impl ServerCommunication {
         self.channel.lock().await.as_ref().unwrap()
             .basic_publish(
                 &self.exchange,
-                &self.uuid.to_string(),
+                "",
                 BasicPublishOptions::default(),
                 &message_bytes,
                 BasicProperties::default(),
@@ -200,7 +200,7 @@ impl ServerCommunication {
         
         let mut consumer = channel.basic_consume(
             &self.queue,
-            &self.uuid.to_string(),
+            "",
             BasicConsumeOptions {
                 no_ack: false,
                 ..Default::default()
@@ -373,16 +373,16 @@ impl ServerCommunication {
                 return Err(e);
             }
         };
-        let command = result.get_command().split_whitespace().nth(0).unwrap_or("");
+        let command = result.get_command();
         // Procesar comandos de manera más estructurada
         match command {
             "PRIVMSG" | "NOTICE" => {
-                let channel = result.get_command().split_whitespace().nth(1).unwrap_or("");
-                let text = result.get_text();
+                let channel = result.get_text().split_whitespace().nth(0).unwrap_or("");
+                let text = result.get_text().splitn(2, ' ').nth(1).unwrap_or("");
                 let source = self.parse_user(result.get_user().to_string());
                 let snick = source.unwrap().nick.clone();
                 // Crear un mensaje que simule venir del servidor
-                let server_message = format!("{command} {channel} :{text}");
+                let server_message = format!("{command} {channel} {text}");
                 let state = self.state.read().await;
                 // Verificar si el canal existe
                 if let Some(chanobj) = state.channels.get(&crate::state::structs::to_unicase(channel)) {
@@ -390,7 +390,7 @@ impl ServerCommunication {
                     for nick in nicks {
                         if *nick != snick {
                             if let Some(user) = state.users.get(&crate::state::structs::to_unicase(&nick)) {
-                                if user.server == self.server_name {
+                                if self.uuid.to_string() != result.get_uuid() {
                                     let _ = user.send_msg_display(
                                         result.get_user(),
                                         server_message.as_str()
@@ -444,7 +444,7 @@ impl ServerCommunication {
                     let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick.to_string())) {
-                            if user.server == self.server_name {
+                            if self.uuid.to_string() != result.get_uuid() {
                                 let _ = user.send_msg_display(
                                     result.get_user(),
                                     server_message.as_str()
@@ -459,9 +459,9 @@ impl ServerCommunication {
                         let channel_name = channel.to_string();
                         let ban_mask_for_timeout = norm_bmask.clone();
                         let state_clone = self.state.clone();
-                        let server_name = self.server_name.clone();
                         let user_str = result.get_user().to_string();
                         let server_message_clone = server_message.clone();
+                        let server_uuid = self.uuid.to_string();
 
                         tokio::spawn(async move {
                             tokio::time::sleep(Duration::from_secs(duration)).await;
@@ -478,7 +478,7 @@ impl ServerCommunication {
                                     for nick in nicks {
                                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
                                             // Solo notificar a usuarios conectados a este servidor
-                                            if user.server == server_name {
+                                            if server_uuid != result.get_uuid() {
                                                 let _ = user.send_msg_display(
                                                     &user_str,
                                                     server_message_clone.as_str()
@@ -500,7 +500,7 @@ impl ServerCommunication {
                     let nicks: Vec<String> = chanobj.users.keys().map(|k| k.to_string()).collect();
                     for nick in nicks {
                         if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nick)) {
-                            if user.server == self.server_name {
+                            if self.uuid.to_string() != result.get_uuid() {
                                 let _ = user.send_msg_display(
                                     result.get_user(),
                                     server_message.as_str()
