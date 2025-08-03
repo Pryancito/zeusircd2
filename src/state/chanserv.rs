@@ -202,7 +202,7 @@ impl super::MainState {
                     // Check permissions: only SOP and channel creator can change access
                     let channel_info = db.get_channel_info(channel).await?;
                     let is_creator = nick == &channel_info.unwrap().0;
-                    let is_sop = db.get_channel_access(channel, nick).await?.map_or(false, |access| access.0 == "sop");
+                    let is_sop = db.get_channel_access(channel, nick).await?.map(|access| access.0 == "sop").unwrap_or(false);
                     let is_ircop = self.is_ircop(nick).await;
                     
                     if !is_creator && !is_sop && !is_ircop {

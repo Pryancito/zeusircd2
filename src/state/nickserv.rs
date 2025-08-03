@@ -235,7 +235,7 @@ impl super::MainState {
                 let action = params[1];
                 
                 // Validar el nick objetivo
-                if let Err(_) = validate_username(target_nick) {
+                if validate_username(target_nick).is_err() {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid nick.")).await?;
                     return Ok(());
                 }
@@ -427,7 +427,7 @@ impl super::MainState {
                 }
                 
                 // Validar el nickname objetivo
-                if let Err(_) = validate_username(target_nick) {
+                if validate_username(target_nick).is_err() {
                     self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Invalid nick.")).await?;
                     return Ok(());
                 }
@@ -491,7 +491,7 @@ impl super::MainState {
                                         if let Some(chanobj) = state.channels.get_mut(&crate::state::structs::to_unicase(&channel.clone())) {
                                             let nicks: Vec<String> = chanobj.users.keys().cloned().map(|nick| nick.to_string()).collect();
                                             for nicknames in nicks {
-                                                if nicknames != target_nick.to_string() && nicknames != old_nick.to_string() {
+                                                if nicknames != target_nick && nicknames != old_nick {
                                                     if let Some(user) = state.users.get_mut(&crate::state::structs::to_unicase(&nicknames)) {
                                                         let part_msg = format!("PART {channel} :vHost");
                                                         let _ = user.send_msg_display(

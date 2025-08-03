@@ -968,7 +968,7 @@ impl super::MainState {
                         }
                         'o' | 'v' | 'h' | 'q' | 'a' => {
                             let arg = margs_it.next().unwrap();
-                            if chanobj.users.contains_key(&crate::state::structs::to_unicase(&arg.to_string())) {
+                            if chanobj.users.contains_key(&crate::state::structs::to_unicase(arg)) {
                                 match mchar {
                                     'o' => {
                                         if if_op || if_oper {
@@ -1166,7 +1166,7 @@ impl super::MainState {
                         mode_string += &unset_mode_args.join(" ");
                     }
                 }
-                let mode_string = format!("MODE {} {}", target, mode_string);
+                let mode_string = format!("MODE {target} {mode_string}");
 
                 for unick in chanobj.users.keys() {
                     // to all users of channel
@@ -1258,7 +1258,7 @@ impl super::MainState {
                                     set_modes_string.push('w');
                                 }
                             } else if user.modes.wallops {
-                                state.wallops_users.remove(&user_nick.to_string());
+                                state.wallops_users.remove(user_nick);
                                 user.modes.wallops = false;
                                 // put to applied modes
                                 unset_modes_string.push('w');
@@ -1342,7 +1342,7 @@ impl super::MainState {
                                     {
                                         if let Some(db_arc) = &self.databases.nick_db {
                                             let db = db_arc.read().await;
-                                            if let Ok(Some(info)) = db.get_nick_info(&user_nick).await {
+                                            if let Ok(Some(info)) = db.get_nick_info(user_nick).await {
                                                 if let Some(vhost) = info.4 {
                                                     user.cloack = vhost.clone();
                                                 } else {

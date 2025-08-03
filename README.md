@@ -138,6 +138,14 @@ queue = "server_messages"
 server_name = "irc1.example.com"
 ```
 
+## **Servidor AMQP**
+Para activar la visualización de servidores deberás
+introducir este comando en tu servidor de rabbitmq:
+
+```bash
+sudo rabbitmq-plugins enable rabbitmq_event_exchange
+```
+
 ### **Eventos Detectados**
 - ✅ Conexiones de nuevos servidores
 - ✅ Desconexiones de servidores
@@ -163,33 +171,17 @@ INFO --> ¡Conexión cerrada detectada! Servidor IRC: 'irc2.localhost' UUID: 21c
 
 ### **MySQL**
 ```toml
-[services]
-mysql_url = "mysql://user:password@localhost/zeusircd2"
+[db]
+url = "mysql://user:password@localhost/zeusircd2"
 ```
 
 ### **SQLite**
 ```toml
-[services]
-sqlite_path = "/path/to/zeusircd2.db"
+[db]
+url = "/path/to/zeusircd2.db"
 ```
 
 ## 🔧 Desarrollo
-
-### **Estructura del Proyecto**
-```
-zeusircd2/
-├── src/
-│   ├── main.rs              # Punto de entrada
-│   ├── config.rs            # Configuración
-│   ├── state/               # Estado del servidor
-│   │   ├── mod.rs
-│   │   ├── server_communication.rs  # AMQP
-│   │   ├── structs.rs
-│   │   └── ...
-│   └── database/            # Bases de datos
-├── config-example.toml      # Configuración de ejemplo
-└── README.md
-```
 
 ### **Tests**
 ```bash

@@ -559,7 +559,7 @@ impl MainState {
         source: &str,
         t: T,
     ) -> Result<(), LinesCodecError> {
-        stream.feed(format!(":{} {}", source, t)).await
+        stream.feed(format!(":{source} {t}")).await
     }
 }
 

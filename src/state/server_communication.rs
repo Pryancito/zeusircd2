@@ -61,7 +61,7 @@ impl ServerCommunication {
             connection: Arc::new(Mutex::new(None)),
             channel: Arc::new(Mutex::new(None)),
             conn_channel: Arc::new(Mutex::new(None)),
-            conn_queue: format!("connection_events_{}", queue),
+            conn_queue: format!("connection_events_{queue}"),
             state: state.clone(),
             // Insertar el propio servidor en el mapa de servidores
             servers: Arc::new(RwLock::new({
@@ -174,7 +174,7 @@ impl ServerCommunication {
 
     pub(crate) async fn publish_message(&self, message: &String) -> Result<(), Box<dyn Error>> {
         // Serializar el mensaje a JSON
-        let message = format!(":{} {}", self.uuid.to_string(), message);
+        let message = format!(":{} {}", self.uuid, message);
         let message_bytes = serde_json::to_vec(&message)?;
         // Publicar el mensaje en el exchange
         self.channel.lock().await.as_ref().unwrap()
@@ -270,7 +270,7 @@ impl ServerCommunication {
                         let mut server_uuid = String::new();
                         
                         // Iterar sobre los elementos del FieldArray
-                        for (_index, value) in client_props_array.as_slice().iter().enumerate() {
+                        for value in client_props_array.as_slice().iter() {
                             if let AMQPValue::LongString(data_str) = value {
                                 let data = data_str.to_string();
                                 
@@ -378,7 +378,7 @@ impl ServerCommunication {
         match command {
             "PRIVMSG" | "NOTICE" => {
                 let channel = result.get_text().split_whitespace().nth(0).unwrap_or("");
-                let text = result.get_text().splitn(2, ' ').nth(1).unwrap_or("");
+                let text = result.get_text().split_once(' ').map(|(_, t)| t).unwrap_or("");
                 let source = self.parse_user(result.get_user().to_string());
                 let snick = source.unwrap().nick.clone();
                 // Crear un mensaje que simule venir del servidor
@@ -563,8 +563,8 @@ impl ServerCommunication {
         // Extraer el texto (si existe)
         let text = if command_end < rest.len() {
             let after_command = rest[command_end..].trim();
-            if after_command.starts_with(':') {
-                after_command[1..].trim().to_string()
+            if let Some(stripped) = after_command.strip_prefix(':') {
+                stripped.trim().to_string()
             } else {
                 after_command.to_string()
             }
