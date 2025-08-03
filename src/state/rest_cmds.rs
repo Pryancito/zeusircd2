@@ -216,7 +216,7 @@ impl super::MainState {
                                     client,
                                     nick: target,
                                     message: away,
-                                }));
+                                })).await;
                             }
                         }
                         something_done = true;
@@ -234,7 +234,7 @@ impl super::MainState {
                         let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchNick401 {
                             client,
                             nick: target,
-                        }));
+                        })).await;
                     }
                 }
             }
@@ -588,7 +588,7 @@ impl super::MainState {
             .await?;
         } else {
             let state = self.state.read().await;
-            if let Some(hist) = state.nick_histories.get(&nickname.to_string()) {
+            if let Some(hist) = state.nick_histories.get(nickname) {
                 // get hist_count - length if zero or not given
                 let hist_count = if let Some(c) = count {
                     if c > 0 {
@@ -798,7 +798,7 @@ impl super::MainState {
         for nicks in nicknames.chunks(20) {
             let replies = nicks
                 .iter()
-                .filter_map(|nick| state.users.get(&crate::state::structs::to_unicase(&nick.to_string())).map(|user| (nick, user)))
+                .filter_map(|nick| state.users.get(&crate::state::structs::to_unicase(nick)).map(|user| (nick, user)))
                 .map(|(nick, user)| {
                     let asterisk = if user.modes.is_local_oper() { "*" } else { "" };
                     let away = if user.away.is_some() { '-' } else { '+' };
