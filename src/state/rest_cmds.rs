@@ -42,9 +42,9 @@ impl super::MainState {
 
             for target in HashSet::<&&str>::from_iter(targets.iter()) {
                 let msg_str = if notice {
-                    format!("NOTICE {} :{}", target, text)
+                    format!("NOTICE {target} :{text}")
                 } else {
-                    format!("PRIVMSG {} :{}", target, text)
+                    format!("PRIVMSG {target} :{text}")
                 };
                 let (target_type, chan_str) = get_privmsg_target_type(target);
                 if target_type.contains(PrivMsgTargetType::Channel) {
@@ -62,7 +62,7 @@ impl super::MainState {
                                     let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
                                         client,
                                         channel: chan_str,
-                                    }));
+                                    })).await;
                                 }
                                 false
                             }
@@ -77,7 +77,7 @@ impl super::MainState {
                                     let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
                                         client,
                                         channel: chan_str,
-                                    }));
+                                    })).await;
                                 }
                                 false
                             }
@@ -94,7 +94,7 @@ impl super::MainState {
                                     let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrCannotSendToChain404 {
                                         client,
                                         channel: chan_str,
-                                    }));
+                                    })).await;
                                 }
                                 false
                             }
@@ -202,7 +202,7 @@ impl super::MainState {
                         let _ = conn_state.stream.feed(format!(":{} {}", user_nick, ErrNoSuchChannel403 {
                             client,
                             channel: chan_str,
-                        }));
+                        })).await;
                     }
                 } else {
                     // to user
@@ -621,10 +621,8 @@ impl super::MainState {
                             server: &self.config.name,
                             server_info: &format!(
                                 "Logged in at {}",
-                                DateTime::<Utc>::from_utc(
-                                    NaiveDateTime::from_timestamp(entry.signon as i64, 0),
-                                    Utc
-                                )
+                                DateTime::<Utc>::from_timestamp(entry.signon as i64, 0)
+                                    .unwrap_or_else(|| chrono::DateTime::<Utc>::from_timestamp(0, 0).unwrap())
                             ),
                         },
                     )

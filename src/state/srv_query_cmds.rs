@@ -56,15 +56,24 @@ impl super::MainState {
             .await?;
             if let Ok(file) = std::fs::File::open("motd.txt") {
                 let reader = std::io::BufReader::new(file);
-                for motd_line in std::io::BufRead::lines(reader).flatten() {
-                    self.feed_msg(
-                        &mut conn_state.stream,
-                        RplMotd372 {
-                            client,
-                            motd: &motd_line,
-                        },
-                    )
-                    .await?;
+                for motd_line_result in std::io::BufRead::lines(reader) {
+                    match motd_line_result {
+                        Ok(motd_line) => {
+                            self.feed_msg(
+                                &mut conn_state.stream,
+                                RplMotd372 {
+                                    client,
+                                    motd: &motd_line,
+                                },
+                            )
+                            .await?;
+                        }
+                        Err(e) => {
+                            // Si ocurre un error al leer una línea, lo registramos y salimos del bucle
+                            eprintln!("Error al leer línea del MOTD: {}", e);
+                            break;
+                        }
+                    }
                 }
             } else {
                 self.feed_msg(
@@ -467,7 +476,7 @@ impl super::MainState {
         let client = conn_state.user_state.client_name();
         let if_op = chum.is_operator();
         let if_half_op = chum.is_half_operator();
-        let user = users.get(&crate::state::structs::to_unicase(&client));
+        let user = users.get(&crate::state::structs::to_unicase(client));
         let if_oper = user.as_ref().unwrap().modes.is_local_oper();
         let mut set_mode_args: Vec<String> = Vec::new();
         let mut unset_mode_args: Vec<String> = Vec::new();
@@ -1375,7 +1384,7 @@ impl super::MainState {
                 self.feed_msg_source(
                     &mut conn_state.stream,
                     &conn_state.user_state.source,
-                    format!("MODE {} {}", user_nick, mode_string),
+                    format!("MODE {user_nick} {mode_string}"),
                 )
                 .await?;
             }

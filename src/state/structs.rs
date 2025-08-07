@@ -598,7 +598,7 @@ impl Channel {
             protecteds.insert(user_nick.clone());
             self.modes.protecteds = Some(protecteds);
         }
-        self.users.insert(crate::state::structs::to_unicase(&user_nick), chum);
+        self.users.insert(crate::state::structs::to_unicase(user_nick), chum);
     }
 
     pub(super) fn rename_user(&mut self, old_nick: &String, nick: String) {

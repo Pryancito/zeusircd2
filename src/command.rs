@@ -117,7 +117,7 @@ impl<'a> Message<'a> {
                 params.push(trailing);
                 break;
             } else {
-                params.push(&parts[i]);
+                params.push(parts[i]);
                 i += 1;
             }
         }
