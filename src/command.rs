@@ -151,7 +151,7 @@ impl<'a> Message<'a> {
         }
         
         // Add source
-        result.push_str(":");
+        result.push(':');
         result.push_str(source);
         result.push(' ');
         
@@ -629,7 +629,7 @@ impl<'a> Command<'a> {
                     let channels = param_it.next().unwrap().split(',').collect::<Vec<_>>();
                     // keys are separated by ','
                     let keys_opt = param_it.next().map(|x| x.split(',').collect::<Vec<_>>());
-                    let account_opt = param_it.next().map(|x| x);
+                    let account_opt = param_it.next();
                     if let Some(ref keys) = keys_opt {
                         if keys.len() != channels.len() {
                             return Err(ParameterDoesntMatch(JOINId, 1));
@@ -716,17 +716,17 @@ impl<'a> Command<'a> {
                 }
             }
             "MOTD" => Ok(MOTD {
-                target: message.params.get(0).copied(),
+                target: message.params.first().copied(),
             }),
             "VERSION" => Ok(VERSION {
-                target: message.params.get(0).copied(),
+                target: message.params.first().copied(),
             }),
             "ADMIN" => Ok(ADMIN {
-                target: message.params.get(0).copied(),
+                target: message.params.first().copied(),
             }),
             "LUSERS" => Ok(LUSERS {}),
             "TIME" => Ok(TIME {
-                server: message.params.get(0).copied(),
+                server: message.params.first().copied(),
             }),
             "STATS" => {
                 if !message.params.is_empty() {
@@ -888,7 +888,7 @@ impl<'a> Command<'a> {
             "REHASH" => Ok(REHASH {}),
             "RESTART" => Ok(RESTART {}),
             "AWAY" => Ok(AWAY {
-                text: message.params.get(0).copied(),
+                text: message.params.first().copied(),
             }),
             "USERHOST" => {
                 if !message.params.is_empty() {
@@ -1199,9 +1199,7 @@ impl<'a> Command<'a> {
             }
             SETNAME { realname } => validate_username(realname).map_err(|_| WrongParameter(SETNAMEId, 0)),
             MONITOR { subcommand, .. } => {
-                if *subcommand == "drop" {
-                    Ok(())
-                } else if *subcommand == "register" {
+                if *subcommand == "drop" || *subcommand == "register" {
                     Ok(())
                 } else {
                     Err(UnknownSubcommand(MONITORId, subcommand.to_string()))
