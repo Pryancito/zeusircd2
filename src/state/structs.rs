@@ -147,7 +147,7 @@ impl User {
         let s = format!("{}:{}.{}.{}:{}", key3, parts[0], parts[1], parts[2], key1);
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key2.as_bytes());
         let beta = Self::downsample(&hasher.finalize_reset());
     
@@ -155,7 +155,7 @@ impl User {
         let s = format!("{}:{}:{}:{}", key1, parts[0], parts[1], key2);
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key3.as_bytes());
         let gamma = Self::downsample(&hasher.finalize_reset());
     
@@ -175,7 +175,7 @@ impl User {
         let s = format!("{}:{}:{}", key2, ip, key3);
         hasher.update(s.as_bytes());
         let mut hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key1.as_bytes());
         let alpha = Self::downsample(&hasher.finalize_reset());
     
@@ -193,7 +193,7 @@ impl User {
         );
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key2.as_bytes());
         let beta = Self::downsample(&hasher.finalize_reset());
     
@@ -205,7 +205,7 @@ impl User {
         );
         hasher.update(s.as_bytes());
         hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key3.as_bytes());
         let gamma = Self::downsample(&hasher.finalize_reset());
     
@@ -222,7 +222,7 @@ impl User {
         let s = format!("{}:{}:{}", key1, host, key2);
         hasher.update(s.as_bytes());
         let hash = hasher.finalize_reset();
-        hasher.update(&hash);
+        hasher.update(hash);
         hasher.update(key3.as_bytes());
         let alpha = Self::downsample(&hasher.finalize_reset());
     
@@ -689,7 +689,7 @@ pub(super) struct NickHistoryEntry {
     pub(super) signon: u64,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub(crate) struct CapState {
     pub(super) multi_prefix: bool,
     pub(super) cap_notify: bool,
@@ -709,31 +709,6 @@ pub(crate) struct CapState {
     pub(super) invite_notify: bool,
     pub(super) monitor: bool,
     pub(super) watch: bool,
-}
-
-impl Default for CapState {
-    fn default() -> Self {
-        CapState {
-            multi_prefix: false,
-            cap_notify: false,
-            away_notify: false,
-            account_notify: false,
-            extended_join: false,
-            server_time: false,
-            sasl: false,
-            message_tags: false,
-            batch: false,
-            labeled_response: false,
-            chathistory: false,
-            read_marker: false,
-            echo_message: false,
-            setname: false,
-            userhost_in_names: false,
-            invite_notify: false,
-            monitor: false,
-            watch: false,
-        }
-    }
 }
 
 impl fmt::Display for CapState {

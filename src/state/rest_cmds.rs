@@ -86,7 +86,7 @@ impl super::MainState {
                         // check whether is channel moderated and user have voice permissions
                         let can_send = can_send && {
                             if !chanobj.modes.moderated
-                                || chanuser_mode.map_or(false, |chum| chum.is_voice())
+                                || chanuser_mode.is_some_and(|chum| chum.is_voice())
                             {
                                 true
                             } else {
@@ -207,7 +207,7 @@ impl super::MainState {
                 } else {
                     // to user
                     let client = conn_state.user_state.client_name();
-                    if let Some(cur_user) = state.users.get(&crate::state::structs::to_unicase(*target)) {
+                    if let Some(cur_user) = state.users.get(&crate::state::structs::to_unicase(target)) {
                         cur_user.send_msg_display(&conn_state.user_state.source, &msg_str)?;
                         if !notice {
                             // if user away

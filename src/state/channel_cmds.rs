@@ -313,17 +313,15 @@ impl super::MainState {
                                         }
                                     }
                                     // Verificar +O (solo IRCops)
-                                    if modes_str.contains("O") {
-                                        if !self.is_ircop(&user_nick).await {
-                                            self.feed_msg(
-                                                &mut conn_state.stream,
-                                                ErrCannotJoinIrcopsOnly {
-                                                    client,
-                                                    channel: chname_str,
-                                                },
-                                            ).await?;
-                                            permitido = false;
-                                        }
+                                    if modes_str.contains("O") && !self.is_ircop(&user_nick).await {
+                                        self.feed_msg(
+                                            &mut conn_state.stream,
+                                            ErrCannotJoinIrcopsOnly {
+                                                client,
+                                                channel: chname_str,
+                                            },
+                                        ).await?;
+                                        permitido = false;
                                     }
                                 }
                             }
@@ -599,16 +597,16 @@ impl super::MainState {
         {
             for ((join, _), chname_str) in joined_created.iter().zip(channels.iter()) {
                 if *join {
-                    let chanobj = state.channels.get(&crate::state::structs::to_unicase(&chname_str.to_string())).unwrap();
+                    let chanobj = state.channels.get(&crate::state::structs::to_unicase(chname_str)).unwrap();
                     let mut join_msg = "JOIN ".to_string() + chname_str;
                     
                     // Add account if extended-join is enabled and account is provided
                     if conn_state.caps.extended_join {
+                        join_msg.push(' ');
                         if let Some(account) = account_opt {
-                            join_msg.push_str(" ");
                             join_msg.push_str(account);
                         } else {
-                            join_msg.push_str(" *");
+                            join_msg.push('*');
                         }
                     }
                     
@@ -953,8 +951,7 @@ impl super::MainState {
             const NAMES_COUNT: usize = 20;
             let symbol = if channel.modes.secret { "@" } else { "=" };
 
-            let mut name_chunk = vec![];
-            name_chunk.reserve(NAMES_COUNT);
+            let mut name_chunk = Vec::with_capacity(NAMES_COUNT);
 
             for (unick, chum) in &channel.users {
                 let user = users.get(&crate::state::structs::to_unicase(unick.as_str())).unwrap();
@@ -1298,7 +1295,7 @@ impl super::MainState {
                 // and send to kicked user
                 state
                     .users
-                    .get(&crate::state::structs::to_unicase(&ku.to_string()))
+                    .get(&crate::state::structs::to_unicase(ku))
                     .unwrap()
                     .send_msg_display(&conn_state.user_state.source, kick_msg.clone())?;
             }

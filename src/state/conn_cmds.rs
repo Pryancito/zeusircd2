@@ -84,12 +84,9 @@ static SUPPORT_TOKEN_INT_VALUE: [SupportTokenIntValue; 13] = [
     },
 ];
 
-impl ToString for SupportTokenIntValue {
-    fn to_string(&self) -> String {
-        let mut s = self.name.to_string();
-        s.push('=');
-        s.push_str(&self.value.to_string());
-        s
+impl std::fmt::Display for SupportTokenIntValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}={}", self.name, self.value)
     }
 }
 
@@ -137,12 +134,9 @@ static SUPPORT_TOKEN_STRING_VALUE: [SupportTokenStringValue; 9] = [
     },
 ];
 
-impl ToString for SupportTokenStringValue {
-    fn to_string(&self) -> String {
-        let mut s = self.name.to_string();
-        s.push('=');
-        s.push_str(self.value);
-        s
+impl std::fmt::Display for SupportTokenStringValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}={}", self.name, self.value)
     }
 }
 
@@ -1042,7 +1036,7 @@ impl super::MainState {
             for chname in &user_channels {
                 let state = self.state.read().await;
                 if let Some(channel) = state.channels.get(&crate::state::structs::to_unicase(chname)) {
-                    for (other_nick, _) in &channel.users {
+                    for other_nick in channel.users.keys() {
                         if **other_nick != **UniCase::new(nick) {
                             if let Some(other_user) = state.users.get(&crate::state::structs::to_unicase(other_nick)) {
                                 let _ = other_user.send_msg_display(source, quit_msg.clone());
