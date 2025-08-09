@@ -1138,13 +1138,13 @@ mod test {
                     env!("CARGO_PKG_NAME"),
                     "-",
                     env!("CARGO_PKG_VERSION"),
-                    " OiorwWzx IabehiklmnopqrstvBO"
+                    " OiorwWzx bBeI,k,l,ahimnopqrstvO"
                 ),
                 line_stream.next().await.unwrap().unwrap()
             );
             assert_eq!(
                 ":irc.irc 005 mati AWAYLEN=1000 CASEMAPPING=ascii \
-                    CHANMODES=IabehiklmnopqrstvBO CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
+                    CHANMODES=bBeI,k,l,ahimnopqrstvO CHANNELLEN=1000 CHANTYPES=&# EXCEPTS=e FNC \
                     HOSTLEN=1000 INVEX=I KEYLEN=1000 :are supported by this server"
                     .to_string(),
                 line_stream.next().await.unwrap().unwrap()
