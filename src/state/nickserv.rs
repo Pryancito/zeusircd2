@@ -388,11 +388,11 @@ impl super::MainState {
                         }
                         
                         let status = if new_vhost.is_some() { 
-                            format!("configurado a {}", new_vhost.as_ref().unwrap())
+                            format!("configured to {}", new_vhost.as_ref().unwrap())
                         } else { 
-                            "desactivado".to_string()
+                            "disabled".to_string()
                         };
-                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Tu vhost ha sido {status}.")).await?;
+                        self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :Your vhost has been {status}.")).await?;
                     } else {
                         self.feed_msg_source(&mut conn_state.stream, "NickServ", format!("NOTICE {client} :The nick {nick} is not registered.")).await?;
                     }
