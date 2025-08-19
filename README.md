@@ -2,86 +2,86 @@
 
 [![LGPL 2.1 License](https://img.shields.io/badge/License-LGPL--2.1-brightgreen)](https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html)
 
-ZeusiRCd2 es un servidor IRC moderno y eficiente escrito en Rust. Diseñado con un enfoque asíncrono y arquitectura modular, proporciona una base sólida para redes IRC distribuidas.
+ZeusiRCd2 is a modern and efficient IRC server written in Rust. Designed with an asynchronous approach and modular architecture, it provides a solid foundation for distributed IRC networks.
 
-## 🚀 Características Principales
+## 🚀 Main Features
 
-### **Arquitectura y Rendimiento**
-- **Diseño asíncrono** basado en el framework Tokio
-- **Arquitectura modular** con componentes intercambiables
-- **Alto rendimiento** con manejo eficiente de conexiones concurrentes
-- **Bajo uso de memoria** optimizado para entornos de producción
+### **Architecture and Performance**
+- **Asynchronous design** based on the Tokio framework
+- **Modular architecture** with interchangeable components
+- **High performance** with efficient handling of concurrent connections
+- **Low memory usage** optimized for production environments
 
-### **Conectividad y Protocolos**
-- **Conexiones TLS/SSL** para comunicación segura
-- **Soporte AMQP** para comunicación entre servidores distribuidos
-- **Resolución DNS** integrada para lookup de hosts
-- **WebSocket** para clientes web modernos
+### **Connectivity and Protocols**
+- **TLS/SSL connections** for secure communication
+- **AMQP support** for communication between distributed servers
+- **Integrated DNS resolution** for host lookups
+- **WebSocket** for modern web clients
 
-### **Funcionalidades IRC**
-- **Comandos IRC estándar** completos (PRIVMSG, NOTICE, MODE, etc.)
-- **Modos de usuario** y **modos de canal** configurables
-- **Sistema de operadores** con privilegios granulares
-- **Gestión de canales** con soporte para bans y timeouts
-- **Servicios integrados** (NickServ, ChanServ)
+### **IRC Functionality**
+- **Complete standard IRC commands** (PRIVMSG, NOTICE, MODE, etc.)
+- **User modes** and **channel modes** configurable
+- **Operator system** with granular privileges
+- **Channel management** with support for bans and timeouts
+- **Integrated services** (NickServ, ChanServ)
 
-### **Seguridad y Autenticación**
-- **Hashing de contraseñas** con Argon2
-- **Sistema de autenticación** robusto
-- **Cloaking de hosts** configurable
-- **Protección contra ataques** comunes
+### **Security and Authentication**
+- **Password hashing** with Argon2
+- **Robust authentication system**
+- **Configurable host cloaking**
+- **Protection against common attacks**
 
-### **Integración y Servicios**
-- **Bases de datos** MySQL y SQLite
-- **API REST** para administración
-- **Logging avanzado** con niveles configurables
-- **Monitoreo** de conexiones y eventos
+### **Integration and Services**
+- **MySQL and SQLite databases**
+- **REST API** for administration
+- **Advanced logging** with configurable levels
+- **Connection and event monitoring**
 
-## 🛠️ Compilación
+## 🛠️ Compilation
 
-### **Requisitos**
-- Rust 1.70+ 
-- Cargo (incluido con Rust)
-- OpenSSL (para TLS)
-- MySQL/SQLite (opcional)
+### **Requirements**
+- Rust 1.70+
+- Cargo (included with Rust)
+- OpenSSL (for TLS)
+- MySQL/SQLite (optional)
 
-### **Features Disponibles**
+### **Available Features**
 
-| Feature | Descripción | Dependencias |
+| Feature | Description | Dependencies |
 |---------|-------------|--------------|
-| `dns_lookup` | Resolución DNS con Trust DNS | - |
-| `tls` | Conexiones TLS/SSL | OpenSSL |
-| `amqp` | Comunicación entre servidores | RabbitMQ |
-| `mysql` | Base de datos MySQL | MySQL |
-| `sqlite` | Base de datos SQLite | SQLite |
+| `dns_lookup` | DNS resolution with Trust DNS | - |
+| `tls` | TLS/SSL connections | OpenSSL |
+| `amqp` | Inter-server communication | RabbitMQ |
+| `mysql` | MySQL database | MySQL |
+| `sqlite` | SQLite database | SQLite |
 
-### **Comandos de Compilación**
+### **Compilation Commands**
 
-**Compilación completa con todas las features:**
+**Complete compilation with all features:**
 ```bash
 cargo build --release --features=dns_lookup,tls,amqp,mysql,sqlite
 ```
 
-**Compilación básica (sin DNS ni TLS):**
+**Basic compilation (without DNS or TLS):**
 ```bash
 cargo build --release
 ```
 
-**Compilación con AMQP para servidores distribuidos:**
+**Compilation with AMQP for distributed servers:**
 ```bash
 cargo build --release --features=amqp
 ```
 
-### **Variables de Entorno para Seguridad**
+### **Environment Variables for Security**
 ```bash
-export PASSWORD_SALT="tu_salt_personalizado"
+export PASSWORD_SALT="your_custom_salt"
 cargo build --release
 ```
 
-## ⚙️ Configuración
+## ⚙️ Configuration
 
-### **Archivo de Configuración**
-El servidor usa archivos TOML para configuración. Ejemplo básico:
+### **Configuration File**
+The server uses TOML files for configuration. Basic example:
 
 ```toml
 [server]
@@ -99,37 +99,37 @@ queue = "server_messages"
 mysql_url = "mysql://user:pass@localhost/zeusircd2"
 ```
 
-### **Generación de Hashes de Contraseña**
+### **Password Hash Generation**
 ```bash
-# Generar hash interactivo
+# Generate interactive hash
 zeusircd2 -g
 
-# Generar hash con contraseña específica
-zeusircd2 -g -P "mi_contraseña"
+# Generate hash with specific password
+zeusircd2 -g -P "my_password"
 ```
 
-## 🚀 Ejecución
+## 🚀 Execution
 
-### **Comando Básico**
+### **Basic Command**
 ```bash
 zeusircd2 -c config.toml
 ```
 
-### **Opciones de Línea de Comandos**
+### **Command Line Options**
 ```bash
 zeusircd2 -c config.toml --log-level debug
 zeusircd2 -c config.toml --daemon
 ```
 
-## 🔗 Comunicación entre Servidores (AMQP)
+## 🔗 Inter-Server Communication (AMQP)
 
-### **Características AMQP**
-- **Monitoreo automático** de conexiones/desconexiones
-- **Sincronización de usuarios** entre servidores
-- **Broadcasting de mensajes** a toda la red
-- **Gestión de servidores** distribuidos
+### **AMQP Features**
+- **Automatic monitoring** of connections/disconnections
+- **User synchronization** between servers
+- **Message broadcasting** to entire network
+- **Distributed server management**
 
-### **Configuración AMQP**
+### **AMQP Configuration**
 ```toml
 [amqp]
 url = "amqp://localhost:5672"
@@ -138,36 +138,36 @@ queue = "server_messages"
 server_name = "irc1.example.com"
 ```
 
-## **Servidor AMQP**
-Para activar la visualización de servidores deberás
-introducir este comando en tu servidor de rabbitmq:
+## **AMQP Server**
+To activate server visualization, you must
+enter this command on your RabbitMQ server:
 
 ```bash
 sudo rabbitmq-plugins enable rabbitmq_event_exchange
 ```
 
-### **Eventos Detectados**
-- ✅ Conexiones de nuevos servidores
-- ✅ Desconexiones de servidores
-- ✅ Sincronización de usuarios
-- ✅ Broadcast de mensajes
+### **Detected Events**
+- ✅ New server connections
+- ✅ Server disconnections
+- ✅ User synchronization
+- ✅ Message broadcasting
 
-## 📊 Monitoreo y Logs
+## 📊 Monitoring and Logs
 
-### **Niveles de Log**
-- `error`: Errores críticos
-- `warn`: Advertencias
-- `info`: Información general
-- `debug`: Información detallada
-- `trace`: Trazado completo
+### **Log Levels**
+- `error`: Critical errors
+- `warn`: Warnings
+- `info`: General information
+- `debug`: Detailed information
+- `trace`: Complete tracing
 
-### **Ejemplo de Logs AMQP**
+### **AMQP Log Examples**
 ```
-INFO --> ¡Nueva conexión detectada! Servidor IRC: 'irc2.localhost' (v0.0.9) UUID: 84ea8998-17ab-48bb-a41b-eaeff4b529d7
-INFO --> ¡Conexión cerrada detectada! Servidor IRC: 'irc2.localhost' UUID: 21c659ae-c442-47e6-add9-a127e4128781
+INFO --> New connection detected! IRC Server: 'irc2.localhost' (v0.0.9) UUID: 84ea8998-17ab-48bb-a41b-eaeff4b529d7
+INFO --> Connection closed detected! IRC Server: 'irc2.localhost' UUID: 21c659ae-c442-47e6-add9-a127e4128781
 ```
 
-## 🗄️ Bases de Datos
+## 🗄️ Databases
 
 ### **MySQL**
 ```toml
@@ -181,7 +181,7 @@ url = "mysql://user:password@localhost/zeusircd2"
 url = "/path/to/zeusircd2.db"
 ```
 
-## 🔧 Desarrollo
+## 🔧 Development
 
 ### **Tests**
 ```bash
@@ -189,24 +189,24 @@ cargo test
 cargo test --features=amqp
 ```
 
-## 📝 Licencia
+## 📝 License
 
-Este proyecto está licenciado bajo LGPL 2.1. Ver [COPYING](COPYING) para más detalles.
+This project is licensed under LGPL 2.1. See [COPYING](COPYING) for more details.
 
-## 🤝 Contribuciones
+## 🤝 Contributions
 
-Las contribuciones son bienvenidas. Por favor:
+Contributions are welcome. Please:
 
-1. Fork el repositorio
-2. Crea una rama para tu feature
-3. Commit tus cambios
-4. Push a la rama
-5. Abre un Pull Request
+1. Fork the repository
+2. Create a branch for your feature
+3. Commit your changes
+4. Push to the branch
+5. Open a Pull Request
 
-## 📞 Soporte
+## 📞 Support
 
-Para reportar bugs o solicitar features, por favor usa los issues de GitHub.
+To report bugs or request features, please use GitHub issues.
 
 ---
 
-**Nota**: Este servidor está diseñado para entornos simples y locales. Para uso en producción, se recomienda configurar adecuadamente la seguridad y el monitoreo.
+**Note**: This server is designed for simple and local environments. For production use, proper security and monitoring configuration is recommended.
